@@ -4,9 +4,21 @@ import { createGammaAdapter } from "./gamma";
 import type { SupplierAdapter } from "./types";
 
 export * from "./types";
-export { createAlphaAdapter, normalizeAlpha } from "./alpha";
-export { createBetaAdapter, normalizeBeta, parseCategory, toCityCode } from "./beta";
-export { createGammaAdapter, normalizeGamma, SEARCH_QUERY } from "./gamma";
+export { createAlphaAdapter, normalizeAlpha, normalizeAlphaQuote } from "./alpha";
+export {
+  createBetaAdapter,
+  normalizeBeta,
+  normalizeBetaQuote,
+  parseCategory,
+  toCityCode,
+} from "./beta";
+export {
+  createGammaAdapter,
+  normalizeGamma,
+  normalizeGammaQuote,
+  QUOTE_QUERY,
+  SEARCH_QUERY,
+} from "./gamma";
 
 export interface SupplierUrls {
   alpha: string;

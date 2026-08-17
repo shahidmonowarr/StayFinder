@@ -96,8 +96,14 @@ export function createApp(options: AlphaAppOptions = {}): Express {
         return;
       }
 
+      // The property travels with the quote, not just the price. A consumer
+      // building a booking record needs the name and rating from us rather than
+      // from whatever its own client happened to send back.
       res.json({
         hotelId: hotel.hotelId,
+        name: hotel.name,
+        city: hotel.city,
+        starRating: hotel.starRating,
         nightlyRateCents: hotel.nightlyRateCents,
         currency: hotel.currency,
         nights: nightsBetween(checkIn, checkOut),

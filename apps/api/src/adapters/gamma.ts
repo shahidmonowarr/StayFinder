@@ -8,10 +8,13 @@ import {
 } from "@stayfinder/shared";
 import { z } from "zod";
 import {
+  SupplierHotelNotFoundError,
   SupplierPayloadError,
   SupplierResponseError,
   type AdapterResult,
+  type QuoteRequest,
   type SupplierAdapter,
+  type SupplierQuote,
 } from "./types";
 
 /**
@@ -139,6 +142,106 @@ export function normalizeGamma(payload: unknown, query: SearchQuery): AdapterRes
   return { options, dropped };
 }
 
+export const QUOTE_QUERY = /* GraphQL */ `
+  query Quote($input: QuoteInput!) {
+    hotelQuote(input: $input) {
+      hotelId
+      nights
+      priceChanged
+      property {
+        name
+        city
+        rating {
+          stars
+        }
+      }
+      pricing {
+        refundable
+        perNight {
+          amount
+          currency {
+            code
+          }
+        }
+      }
+    }
+  }
+`;
+
+const QuoteEnvelopeSchema = z.object({
+  errors: z.array(z.object({ message: z.string(), extensions: z.unknown().optional() })).optional(),
+  data: z
+    .object({
+      hotelQuote: z.object({
+        hotelId: z.string().min(1),
+        nights: z.number().int().positive(),
+        priceChanged: z.boolean(),
+        property: z.object({
+          name: z.string().min(1),
+          city: z.string().min(1),
+          rating: z.object({ stars: z.number().int().min(0).max(5) }),
+        }),
+        pricing: z.object({
+          refundable: z.boolean(),
+          perNight: z.object({
+            amount: z.number().int().nonnegative(),
+            currency: z.object({ code: z.string().length(3) }),
+          }),
+        }),
+      }),
+    })
+    .nullish(),
+});
+
+function errorCodeOf(error: { extensions?: unknown }): string | undefined {
+  const extensions = error.extensions;
+  if (typeof extensions !== "object" || extensions === null) return undefined;
+  const code = (extensions as { code?: unknown }).code;
+  return typeof code === "string" ? code : undefined;
+}
+
+export function normalizeGammaQuote(payload: unknown, supplierHotelId: string): SupplierQuote {
+  const envelope = QuoteEnvelopeSchema.safeParse(payload);
+  if (!envelope.success) {
+    throw new SupplierPayloadError("gamma", envelope.error.issues[0]?.message ?? "unknown shape");
+  }
+
+  const failure = envelope.data.errors?.[0];
+  if (failure !== undefined) {
+    // Gamma reports a missing property as a typed GraphQL error over HTTP 200,
+    // so the distinction between "no such hotel" and "Gamma is broken" is inside
+    // the body rather than in the status code.
+    if (errorCodeOf(failure) === "HOTEL_NOT_FOUND") {
+      throw new SupplierHotelNotFoundError("gamma", supplierHotelId);
+    }
+    throw new SupplierPayloadError("gamma", failure.message);
+  }
+  if (!envelope.data.data) {
+    throw new SupplierPayloadError("gamma", "response carried neither data nor errors");
+  }
+
+  const quote = envelope.data.data.hotelQuote;
+  const nightlyRate = fromMinor(
+    quote.pricing.perNight.amount,
+    quote.pricing.perNight.currency.code,
+  );
+
+  // `priceChanged` from Gamma is deliberately ignored. A real supplier would not
+  // volunteer that it just moved the price, so the aggregator compares the
+  // amounts itself and treats the flag as decoration.
+  return {
+    supplier: "gamma",
+    supplierHotelId: quote.hotelId,
+    hotelName: quote.property.name,
+    city: quote.property.city,
+    starRating: quote.property.rating.stars,
+    nightlyRate,
+    totalPrice: multiplyMoney(nightlyRate, quote.nights),
+    nights: quote.nights,
+    refundable: quote.pricing.refundable,
+  };
+}
+
 export function createGammaAdapter(baseUrl: string): SupplierAdapter {
   return {
     id: "gamma",
@@ -169,6 +272,31 @@ export function createGammaAdapter(baseUrl: string): SupplierAdapter {
       }
 
       return normalizeGamma(await response.json(), query);
+    },
+
+    async quote(request: QuoteRequest, signal) {
+      const response = await fetch(new URL("/graphql", baseUrl), {
+        method: "POST",
+        signal,
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({
+          query: QUOTE_QUERY,
+          variables: {
+            input: {
+              hotelId: request.supplierHotelId,
+              checkIn: request.checkIn,
+              checkOut: request.checkOut,
+              guests: request.guests,
+            },
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        throw new SupplierResponseError("gamma", response.status);
+      }
+
+      return normalizeGammaQuote(await response.json(), request.supplierHotelId);
     },
   };
 }

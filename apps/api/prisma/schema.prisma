@@ -1,13 +1,112 @@
-// Data model lands in M5 (bookings + state machine) and M6 (append-only
-// transactions ledger). The datasource and generator are wired up now so the
-// milestone that needs them starts with `prisma migrate dev`, not setup.
-
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
+}
+
+/// Mirrors `BookingStatus` in packages/shared. A Prisma enum rather than a
+/// string column so the database refuses an invalid state even if application
+/// code is bypassed — and `schema-drift.test.ts` asserts these values stay
+/// identical to the shared union, since two sources of truth without a check is
+/// just a bug with extra steps.
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+  FAILED
+}
+
+/// A price a supplier confirmed at a moment in time.
+///
+/// Persisted rather than cached: this is the provenance of an amount we are
+/// about to charge, and evicting it under memory pressure is not a trade worth
+/// making on the money path. It is also what a booking references, so the price
+/// charged never comes from anything the client sent us.
+model Quote {
+  id String @id @default(uuid())
+
+  supplier        String
+  supplierHotelId String
+  hotelName       String
+  city            String
+  starRating      Int
+
+  /// Calendar dates as ISO strings, matching the rest of the system. A DateTime
+  /// here would invite a timezone to decide how many nights a stay is.
+  checkIn  String
+  checkOut String
+  nights   Int
+  guests   Int
+
+  nightlyRateMinor Int
+  totalMinor       Int
+  currency         String
+  refundable       Boolean
+
+  /// What the client said it was displaying when it asked. Nullable because a
+  /// caller need not have searched first. Advisory only — it decides what we
+  /// *tell* the user, never what we charge.
+  searchedTotalMinor Int?
+  /// True when the live price differed from `searchedTotalMinor`.
+  priceChanged       Boolean @default(false)
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  booking Booking?
+
+  @@index([supplier, supplierHotelId])
+}
+
+model Booking {
+  id String @id @default(uuid())
+
+  /// Unique: a quote may be booked exactly once. Enforced here rather than by a
+  /// read-then-check in application code, which races under concurrency.
+  quoteId String @unique
+  quote   Quote  @relation(fields: [quoteId], references: [id])
+
+  status BookingStatus @default(PENDING)
+
+  /// Client-supplied. Unique so a replayed request cannot create a second
+  /// booking — the constraint is the guarantee; the lookup is just an optimization.
+  idempotencyKey String @unique
+  /// Hash of the request body. A repeat key with a different payload is a client
+  /// bug worth reporting rather than silently answering with the old booking.
+  requestHash    String
+
+  guestName  String
+  guestEmail String
+
+  totalMinor Int
+  currency   String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events BookingEvent[]
+}
+
+/// Append-only state history. Never updated, never deleted — the booking's
+/// timeline is reconstructed by replaying these in order, and M6's transactions
+/// ledger is the same idea applied to money.
+model BookingEvent {
+  id String @id @default(uuid())
+
+  bookingId String
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  /// Null on creation: a new booking transitions from nothing into PENDING.
+  fromStatus BookingStatus?
+  toStatus   BookingStatus
+  /// Null on creation, since "create" is not one of the machine's transitions.
+  transition String?
+
+  at DateTime @default(now())
+
+  @@index([bookingId, at])
 }

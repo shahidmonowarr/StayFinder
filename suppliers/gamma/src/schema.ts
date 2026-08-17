@@ -78,6 +78,7 @@ export const typeDefs = /* GraphQL */ `
 
   type QuoteResult {
     hotelId: ID!
+    property: Property!
     pricing: Pricing!
     nights: Int!
     "True when this quote disagrees with the price search advertised."
@@ -203,6 +204,11 @@ export const resolvers = {
 
       return {
         hotelId: hotel.id,
+        property: {
+          name: hotel.name,
+          city: hotel.city,
+          rating: { stars: hotel.stars },
+        },
         pricing: pricing(hotel, amount),
         nights,
         priceChanged,

@@ -35,18 +35,26 @@ function option(supplier: SupplierId, name: string, totalMinor: number): HotelOp
   };
 }
 
+/**
+ * The fan-out must never quote. Rejecting rather than stubbing means a stray
+ * call shows up as a failing test instead of passing silently.
+ */
+const neverQuote = () =>
+  Promise.reject(new Error("quote() must not be called during a search fan-out"));
+
 function okAdapter(id: SupplierId, options: HotelOption[], dropped = 0): SupplierAdapter {
-  return { id, search: () => Promise.resolve({ options, dropped }) };
+  return { id, search: () => Promise.resolve({ options, dropped }), quote: neverQuote };
 }
 
 function failingAdapter(id: SupplierId, error: Error): SupplierAdapter {
-  return { id, search: () => Promise.reject(error) };
+  return { id, search: () => Promise.reject(error), quote: neverQuote };
 }
 
 /** Never resolves on its own — only the deadline can end it. */
 function hangingAdapter(id: SupplierId): SupplierAdapter {
   return {
     id,
+    quote: neverQuote,
     search: (_query, signal) =>
       new Promise((_resolve, reject) => {
         signal.addEventListener("abort", () => {
@@ -60,6 +68,7 @@ function hangingAdapter(id: SupplierId): SupplierAdapter {
 function slowAdapter(id: SupplierId, ms: number, options: HotelOption[]): SupplierAdapter {
   return {
     id,
+    quote: neverQuote,
     search: (_query, signal) =>
       new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -230,7 +239,11 @@ describe("fanOut — isolation", () => {
   });
 
   it("classifies a non-Error rejection rather than crashing on it", async () => {
-    const rogue: SupplierAdapter = { id: "alpha", search: () => Promise.reject("just a string") };
+    const rogue: SupplierAdapter = {
+      id: "alpha",
+      search: () => Promise.reject("just a string"),
+      quote: neverQuote,
+    };
 
     const result = await fanOut([rogue], QUERY);
 

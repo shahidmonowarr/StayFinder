@@ -105,13 +105,21 @@ export function createApp(options: BetaAppOptions = {}): Express {
         return;
       }
 
-      res.json({
+      // Beta omits `category` here exactly as it does in availability, so a
+      // consumer cannot rely on a quote to fill a gap search left.
+      const quote: Record<string, unknown> = {
         hotel_id: hotel.hotel_id,
+        hotel_name: hotel.hotel_name,
+        city_name: hotel.city_name,
         total_price: toDecimalString(hotel.nightly_base_cents * stay.nights),
         currency: hotel.currency,
         nights: stay.nights,
         cancellation_policy: hotel.cancellation_policy,
-      });
+      };
+      if (hotel.category !== undefined) {
+        quote.category = hotel.category;
+      }
+      res.json(quote);
     } catch (error) {
       if (error instanceof BetaRequestError) {
         sendRequestError(res, error);

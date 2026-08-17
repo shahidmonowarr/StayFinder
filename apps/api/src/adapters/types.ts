@@ -1,4 +1,4 @@
-import type { HotelOption, SearchQuery, SupplierId } from "@stayfinder/shared";
+import type { HotelOption, Money, SearchQuery, SupplierId } from "@stayfinder/shared";
 
 /**
  * The boundary that keeps supplier weirdness out of the rest of the system.
@@ -20,6 +20,46 @@ export interface SupplierAdapter {
    * request is actually cancelled instead of left streaming into nothing.
    */
   search(query: SearchQuery, signal: AbortSignal): Promise<AdapterResult>;
+  /**
+   * Ask the supplier what one property costs right now.
+   *
+   * Unlike `search`, this has no useful degraded answer: "what will this
+   * actually cost" cannot be approximated, so a failure here propagates rather
+   * than being absorbed into a status field.
+   */
+  quote(request: QuoteRequest, signal: AbortSignal): Promise<SupplierQuote>;
+}
+
+export interface QuoteRequest {
+  supplierHotelId: string;
+  checkIn: string;
+  checkOut: string;
+  guests: number;
+}
+
+/**
+ * A live price, normalized. Carries the property as well as the money, because
+ * the booking record is built from this and must not depend on anything the
+ * client sent back.
+ */
+export interface SupplierQuote {
+  supplier: SupplierId;
+  supplierHotelId: string;
+  hotelName: string;
+  city: string;
+  starRating: number;
+  nightlyRate: Money;
+  totalPrice: Money;
+  nights: number;
+  refundable: boolean;
+}
+
+/** The supplier does not have the property we asked about. */
+export class SupplierHotelNotFoundError extends Error {
+  constructor(supplier: SupplierId, supplierHotelId: string) {
+    super(`Supplier ${supplier} has no hotel ${supplierHotelId}`);
+    this.name = "SupplierHotelNotFoundError";
+  }
 }
 
 export interface AdapterResult {

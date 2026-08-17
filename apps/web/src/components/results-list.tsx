@@ -23,10 +23,12 @@ function SkeletonCard() {
 export function ResultsList({
   options,
   waiting,
+  apiUrl = "",
 }: {
   options: HotelOption[];
   /** True while at least one supplier is still outstanding. */
   waiting: boolean;
+  apiUrl?: string;
 }) {
   const groups = groupByProperty(options);
 
@@ -54,7 +56,7 @@ export function ResultsList({
       </p>
 
       {groups.map((group) => (
-        <ResultCard key={group.dedupeKey} group={group} />
+        <ResultCard key={group.dedupeKey} group={group} apiUrl={apiUrl} />
       ))}
 
       {/* One trailing skeleton while a supplier is outstanding: the list is

@@ -5,6 +5,7 @@ import {
   type SupplierMeta,
 } from "@stayfinder/shared";
 import type { SupplierAdapter } from "../adapters/types";
+import { describeError } from "../errors";
 
 /**
  * Parallel supplier fan-out with per-supplier deadlines and total failure
@@ -56,41 +57,6 @@ export interface LegOutcome {
 }
 
 /**
- * Pull a usable detail out of an error's `cause`.
- *
- * Two shapes have to be handled, both of them Node's doing:
- *
- * - A plain `Error` cause, which happens when the host is a literal IP.
- * - An `AggregateError` **with an empty message**, which happens when the host
- *   is `localhost`: it resolves to both `::1` and `127.0.0.1`, undici attempts
- *   both, and collects the two failures. Reading `.message` on that gives ""
- *   and silently loses the reason — which is exactly the bug this function was
- *   written to fix, so the aggregate case is not a hypothetical.
- */
-function causeDetail(cause: unknown): string | undefined {
-  if (!(cause instanceof Error)) return undefined;
-  if (cause.message !== "") return cause.message;
-  if (cause instanceof AggregateError) {
-    return cause.errors.find(
-      (inner: unknown): inner is Error => inner instanceof Error && inner.message !== "",
-    )?.message;
-  }
-  return undefined;
-}
-
-/**
- * Node's `fetch` reports every transport failure as the same useless
- * `TypeError: fetch failed` and hides what actually happened underneath. An
- * operator reading the status strip needs "connect ECONNREFUSED 127.0.0.1:4001",
- * not "fetch failed" — the first names the problem, the second just confirms
- * there is one.
- */
-function describe(error: Error): string {
-  const detail = causeDetail((error as { cause?: unknown }).cause);
-  return detail === undefined ? error.message : `${error.message}: ${detail}`;
-}
-
-/**
  * Decide what a thrown value means for the status strip.
  *
  * `timeout` and `error` are kept apart because they tell an operator different
@@ -105,7 +71,7 @@ function classify(error: unknown): { status: "timeout" | "error"; message: strin
     if (error.name === "TimeoutError" || error.name === "AbortError") {
       return { status: "timeout", message: "Supplier exceeded the response deadline" };
     }
-    return { status: "error", message: describe(error) };
+    return { status: "error", message: describeError(error) };
   }
   return { status: "error", message: "Supplier failed for an unknown reason" };
 }

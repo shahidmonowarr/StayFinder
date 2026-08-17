@@ -1,8 +1,9 @@
 "use client";
 
-import { formatMoney, type PropertyGroup } from "@stayfinder/shared";
+import { formatMoney, type HotelOption, type PropertyGroup } from "@stayfinder/shared";
 import { useState } from "react";
 import { pickDisplayName } from "@/lib/display-name";
+import { QuotePanel } from "./quote-panel";
 
 function Stars({ rating }: { rating: number }) {
   if (rating === 0) return <span className="text-xs text-muted">unrated</span>;
@@ -20,8 +21,11 @@ function Stars({ rating }: { rating: number }) {
  * not noise. The Grand Meridian is cheaper from one supplier and refundable
  * from another, and only the user can say which of those they want.
  */
-export function ResultCard({ group }: { group: PropertyGroup }) {
+export function ResultCard({ group, apiUrl }: { group: PropertyGroup; apiUrl: string }) {
   const [expanded, setExpanded] = useState(false);
+  // Which offer is being quoted, if any. Held per card rather than globally so
+  // two properties can be inspected without one closing the other.
+  const [quoting, setQuoting] = useState<HotelOption | null>(null);
   const { best, offers } = group;
   const alternatives = offers.length - 1;
 
@@ -51,11 +55,19 @@ export function ResultCard({ group }: { group: PropertyGroup }) {
           {best.refundable ? "Free cancellation" : "Non-refundable"}
         </span>
 
+        <button
+          type="button"
+          onClick={() => setQuoting(quoting === null ? best : null)}
+          className="ml-auto rounded border border-line px-2 py-0.5 hover:border-accent"
+        >
+          {quoting === null ? "Check price" : "Cancel"}
+        </button>
+
         {alternatives > 0 && (
           <button
             type="button"
             onClick={() => setExpanded((open) => !open)}
-            className="ml-auto text-accent underline underline-offset-2"
+            className="text-accent underline underline-offset-2"
           >
             {expanded
               ? "Hide"
@@ -75,6 +87,10 @@ export function ResultCard({ group }: { group: PropertyGroup }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {quoting !== null && (
+        <QuotePanel option={quoting} apiUrl={apiUrl} onClose={() => setQuoting(null)} />
       )}
     </article>
   );

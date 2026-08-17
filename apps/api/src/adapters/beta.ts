@@ -8,10 +8,13 @@ import {
 } from "@stayfinder/shared";
 import { z } from "zod";
 import {
+  SupplierHotelNotFoundError,
   SupplierPayloadError,
   SupplierResponseError,
   type AdapterResult,
+  type QuoteRequest,
   type SupplierAdapter,
+  type SupplierQuote,
 } from "./types";
 
 /**
@@ -108,6 +111,38 @@ export function normalizeBeta(payload: unknown, query: SearchQuery): AdapterResu
   return { options, dropped };
 }
 
+const QuoteSchema = z.object({
+  hotel_id: z.string().min(1),
+  hotel_name: z.string().min(1),
+  city_name: z.string().min(1),
+  category: z.string().optional(),
+  total_price: z.string(),
+  currency: z.string().length(3),
+  nights: z.number().int().positive(),
+  cancellation_policy: z.string(),
+});
+
+export function normalizeBetaQuote(payload: unknown): SupplierQuote {
+  const parsed = QuoteSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new SupplierPayloadError("beta", parsed.error.issues[0]?.message ?? "unknown shape");
+  }
+
+  const quote = parsed.data;
+  const totalPrice = fromDecimalString(quote.total_price, quote.currency);
+  return {
+    supplier: "beta",
+    supplierHotelId: quote.hotel_id,
+    hotelName: quote.hotel_name,
+    city: quote.city_name,
+    starRating: parseCategory(quote.category),
+    nightlyRate: perNight(totalPrice, quote.nights),
+    totalPrice,
+    nights: quote.nights,
+    refundable: quote.cancellation_policy === "FREE_CANCELLATION",
+  };
+}
+
 export function createBetaAdapter(baseUrl: string): SupplierAdapter {
   return {
     id: "beta",
@@ -132,6 +167,26 @@ export function createBetaAdapter(baseUrl: string): SupplierAdapter {
       }
 
       return normalizeBeta(await response.json(), query);
+    },
+
+    async quote(request: QuoteRequest, signal) {
+      const url = new URL(
+        `/v1/availability/${encodeURIComponent(request.supplierHotelId)}/price`,
+        baseUrl,
+      );
+      url.searchParams.set("check_in_date", request.checkIn);
+      url.searchParams.set("check_out_date", request.checkOut);
+      url.searchParams.set("occupancy", String(request.guests));
+
+      const response = await fetch(url, { signal, headers: { accept: "application/json" } });
+      if (response.status === 404) {
+        throw new SupplierHotelNotFoundError("beta", request.supplierHotelId);
+      }
+      if (!response.ok) {
+        throw new SupplierResponseError("beta", response.status);
+      }
+
+      return normalizeBetaQuote(await response.json());
     },
   };
 }

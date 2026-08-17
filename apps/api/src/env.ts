@@ -32,6 +32,12 @@ export const env = {
   redisUrl: process.env.REDIS_URL === "" ? undefined : process.env.REDIS_URL,
   /** The browser origin allowed to call this API. `*` permits any. */
   webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
+  /**
+   * Unset means the quote and booking routes are unavailable. Unlike the cache,
+   * there is no fallback worth having: a booking that does not survive a restart
+   * is not a booking.
+   */
+  databaseUrl: process.env.DATABASE_URL === "" ? undefined : process.env.DATABASE_URL,
   suppliers: {
     alpha: url("SUPPLIER_ALPHA_URL", "http://localhost:4001"),
     beta: url("SUPPLIER_BETA_URL", "http://localhost:4002"),

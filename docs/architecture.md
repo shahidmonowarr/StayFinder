@@ -407,20 +407,128 @@ from `:3000` and calls the API on `:4000` directly, because the aggregator is a
 separate service rather than a Next.js route handler. The alternative — proxying
 through Next's `rewrites` — would hide that topology in the network tab.
 
-## Quote revalidation _(planned — M5)_
+## Quote revalidation
 
-`/api/quote` re-asks the owning supplier for a live price. If it differs from
-the searched price, the API returns `PRICE_CHANGED` with both amounts and the
-UI must surface it before the user can continue to payment.
+`POST /api/quote` re-asks the owning supplier what a property costs right now,
+compares it against what the client says it was displaying, and persists the
+answer as a `Quote` row.
 
-## Booking state machine and ledger _(planned — M5/M6)_
+### Search degrades; quote does not
 
-`PENDING → CONFIRMED → CANCELLED → REFUNDED`, plus `FAILED`. Illegal
-transitions throw. The machine is a pure module with no I/O so it can be
-exhaustively unit-tested. Booking creation is idempotent on a client-supplied
-key; Stripe confirmation is webhook-driven and duplicate deliveries are
-absorbed. The `transactions` table is append-only — refunds are new rows, never
-updates — so the financial history of a booking is reconstructible by replay.
+This is the one place where the failure policy is deliberately inverted. A search
+with a dead supplier still returns `200` and an honest status block, because
+partial inventory is useful. "What will this actually cost" has no partial
+answer, so a supplier that fails here fails the request — `502
+SUPPLIER_UNAVAILABLE`, not a guess.
+
+Live, with SupplierAlpha's process killed:
+
+```
+POST /api/quote  → 502  SUPPLIER_UNAVAILABLE  fetch failed: connect ECONNREFUSED …
+GET  /api/search → 200  (5 options from the two surviving suppliers)
+```
+
+### The client says what it showed; the server decides what is charged
+
+The request carries `searchedTotalMinor` — the number on the card the user
+clicked. A client could lie about it, and the only consequence is what we _tell_
+the user, because the response also mints a server-owned `Quote` row and booking
+references that row rather than any figure the client sends back. The comparison
+is a UX signal; the quote record is the integrity boundary.
+
+Everything on the quote — name, city, star rating, price — comes from the
+supplier's own response, which is why the supplier quote endpoints return the
+property and not just a number.
+
+There is no tolerance band. A one-cent difference is `PRICE_CHANGED`, because a
+price the user did not see is a price the user did not agree to. Gamma
+volunteers a `priceChanged` flag of its own; the adapter ignores it, since a real
+supplier would not announce that it had just moved a price.
+
+### Quotes are persisted, not cached
+
+Redis would be the obvious home for something that lives five minutes. But a
+quote is the provenance of an amount about to be charged, and evicting that under
+memory pressure is not a trade worth making on the money path.
+
+Booking against an expired quote is `409 QUOTE_EXPIRED` rather than a silent
+re-quote: the user agreed to a specific number, and substituting a fresh one is
+exactly what this whole flow exists to prevent.
+
+## Booking state machine
+
+```
+PENDING ──confirm──→ CONFIRMED ──cancel──→ CANCELLED ──refund──→ REFUNDED
+   │                                          ▲
+   ├──fail──→ FAILED                          │
+   └──cancel───────────────────────────────────┘
+```
+
+[`booking-state-machine.ts`](../packages/shared/src/booking-state-machine.ts) is
+pure — no database, no Stripe client, no clock, no I/O. The rules about what may
+happen to a booking are where a mistake costs real money, so they live somewhere
+they can be tested exhaustively and read in one sitting. Everything needing a
+side effect asks this module whether it is allowed to proceed.
+
+Two deliberate omissions, both tested:
+
+- **No `CONFIRMED → REFUNDED`.** Money can only be returned for a booking that
+  has been cancelled. Refunding a live booking leaves the guest holding both
+  their money and their room.
+- **No transition out of `FAILED`.** A failed payment does not become a booking
+  later; the client retries and gets a new one.
+
+The machine is **strict**: it does not treat "already in the target state" as
+success. A second `confirm` means a lost update or an unguarded replay, and
+absorbing it would erase the only signal. Idempotency instead lives one layer up,
+which is what `canTransition` is for — M6's duplicate webhooks will check state
+first and no-op deliberately, rather than by swallowing an exception.
+
+Tests cover the full state × transition matrix rather than a sample, so a future
+edit cannot quietly widen the machine without a failure.
+
+`BookingStatus` exists twice on purpose — as a union in `packages/shared`, and as
+a Postgres enum so the database refuses an invalid value even if application code
+is bypassed. `schema-drift.test.ts` asserts the two stay identical, because two
+sources of truth without a check is just a bug with extra steps.
+
+## Idempotent booking creation
+
+`POST /api/bookings` takes an `Idempotency-Key` header. Replaying the same key
+with the same body returns the original booking and `200`; the first call gets
+`201`.
+
+**The guarantee is a unique index, not a lookup.** A read-then-insert check
+races: two concurrent requests both see nothing and both insert. The constraint
+is what actually holds; the pre-flight read is only a fast path.
+
+There are two unique constraints — `idempotencyKey` and `quoteId`, the latter
+making a quote single-use — and a replayed request violates _both_. Postgres
+reports whichever index it happened to check first, so branching on the reported
+column answers the wrong question: a concurrent double-click would be told the
+quote was taken instead of being handed the booking it had already made. The
+recovery path therefore always re-reads by idempotency key first, and only treats
+the collision as somebody else's booking if no booking exists for this key.
+
+A repeated key with a _different_ payload is `409 IDEMPOTENCY_KEY_REUSED`, not a
+quiet return of the earlier booking. That is a client bug worth reporting.
+
+## The append-only history
+
+Every state change writes a `BookingEvent` row — `(from, to, transition, at)` —
+in the same transaction as the status update. Rows are never modified or deleted.
+The booking's `status` column is a cache of the last event; the timeline the UI
+renders is reconstructed by replaying them.
+
+M6's `transactions` ledger is the same idea applied to money: refunds will be new
+rows, never updates, so a booking's financial history is reconstructible by
+replay.
+
+## Payments _(planned — M6)_
+
+Stripe test mode. Confirmation is webhook-driven rather than redirect-driven,
+duplicate deliveries are absorbed idempotently, and the append-only
+`transactions` ledger records every movement of money.
 
 ---
 

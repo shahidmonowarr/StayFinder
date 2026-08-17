@@ -7,7 +7,11 @@ services:
       POSTGRES_PASSWORD: stayfinder
       POSTGRES_DB: stayfinder
     ports:
-      - "5432:5432"
+      # Published on 5433, not 5432. A locally installed Postgres holding the
+      # default port is common enough that colliding with it by default would
+      # make `docker compose up -d` appear to work while every connection went
+      # to the wrong database.
+      - "5433:5432"
     volumes:
       - stayfinder-pgdata:/var/lib/postgresql/data
     healthcheck:

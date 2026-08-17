@@ -8,10 +8,13 @@ import {
 } from "@stayfinder/shared";
 import { z } from "zod";
 import {
+  SupplierHotelNotFoundError,
   SupplierPayloadError,
   SupplierResponseError,
   type AdapterResult,
+  type QuoteRequest,
   type SupplierAdapter,
+  type SupplierQuote,
 } from "./types";
 
 /**
@@ -87,6 +90,38 @@ export function normalizeAlpha(payload: unknown, query: SearchQuery): AdapterRes
   return { options, dropped };
 }
 
+const QuoteSchema = z.object({
+  hotelId: z.string().min(1),
+  name: z.string().min(1),
+  city: z.string().min(1),
+  starRating: z.number().int().min(0).max(5),
+  nightlyRateCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+  nights: z.number().int().positive(),
+  refundable: z.boolean(),
+});
+
+export function normalizeAlphaQuote(payload: unknown): SupplierQuote {
+  const parsed = QuoteSchema.safeParse(payload);
+  if (!parsed.success) {
+    throw new SupplierPayloadError("alpha", parsed.error.issues[0]?.message ?? "unknown shape");
+  }
+
+  const quote = parsed.data;
+  const nightlyRate = fromMinor(quote.nightlyRateCents, quote.currency);
+  return {
+    supplier: "alpha",
+    supplierHotelId: quote.hotelId,
+    hotelName: quote.name,
+    city: quote.city,
+    starRating: quote.starRating,
+    nightlyRate,
+    totalPrice: multiplyMoney(nightlyRate, quote.nights),
+    nights: quote.nights,
+    refundable: quote.refundable,
+  };
+}
+
 export function createAlphaAdapter(baseUrl: string): SupplierAdapter {
   return {
     id: "alpha",
@@ -104,6 +139,23 @@ export function createAlphaAdapter(baseUrl: string): SupplierAdapter {
       }
 
       return normalizeAlpha(await response.json(), query);
+    },
+
+    async quote(request: QuoteRequest, signal) {
+      const url = new URL(`/hotels/${encodeURIComponent(request.supplierHotelId)}/quote`, baseUrl);
+      url.searchParams.set("checkIn", request.checkIn);
+      url.searchParams.set("checkOut", request.checkOut);
+      url.searchParams.set("guests", String(request.guests));
+
+      const response = await fetch(url, { signal, headers: { accept: "application/json" } });
+      if (response.status === 404) {
+        throw new SupplierHotelNotFoundError("alpha", request.supplierHotelId);
+      }
+      if (!response.ok) {
+        throw new SupplierResponseError("alpha", response.status);
+      }
+
+      return normalizeAlphaQuote(await response.json());
     },
   };
 }

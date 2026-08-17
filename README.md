@@ -42,9 +42,9 @@ than simulated. Full detail in [`docs/architecture.md`](docs/architecture.md).
 ```bash
 git clone <repo-url> stayfinder && cd stayfinder
 cp .env.example .env
-docker compose up -d          # Postgres + Redis (optional in M1–M4)
+docker compose up -d          # Postgres on 5433, Redis on 6379
 npm install
-npm run dev
+npm run db:deploy -w @stayfinder/api && npm run dev
 ```
 
 That brings up the web app on `:3000`, the API on `:4000`, and the three
@@ -59,7 +59,14 @@ npm run build     # production build of every workspace
 ```
 
 Redis is optional: with `REDIS_URL` unset the API falls back to an in-memory
-cache so the demo runs on a laptop with nothing installed.
+cache so the demo runs on a laptop with nothing installed. Postgres is not —
+bookings have to survive a restart, so `/api/quote` and `/api/bookings` return
+`503` without a `DATABASE_URL` rather than pretending to work.
+
+The container publishes Postgres on **5433**, not 5432. A Postgres already
+installed on the host holding the default port is common enough that colliding
+with it would make `docker compose up -d` appear to work while every connection
+went to the wrong database.
 
 ---
 
@@ -168,6 +175,47 @@ result set with a timeout in it is deliberately not cached.
 
 ---
 
+## Then watch it refuse to book at the wrong price
+
+Click **Check price** on any result. The API re-asks that supplier what the room
+costs right now — and SupplierGamma moves the price on roughly one quote in ten:
+
+```
+previousTotal: 40500      (what the card showed)
+live total   : 42513      (what the supplier now says)
+status       : PRICE_CHANGED
+```
+
+The UI stops there and shows both numbers. Continuing takes a second, deliberate
+click on **Accept €425.13 and book**. Booking then creates a `PENDING` booking
+against the _server's_ quote record — never a figure the browser sent back.
+
+Replay protection, from a terminal:
+
+```bash
+curl -s -X POST localhost:4000/api/bookings -H 'content-type: application/json' -H 'Idempotency-Key: demo-1' -d '{"quoteId":"<id>","guestName":"Ada Lovelace","guestEmail":"ada@example.com"}'
+```
+
+```
+1st call  → 201  created: true
+2nd call  → 200  created: false, same booking id      (a double-click)
+same key, different guest → 409 IDEMPOTENCY_KEY_REUSED
+different key, same quote → 409 QUOTE_ALREADY_BOOKED
+```
+
+And the contrast that defines the quote path — with SupplierAlpha's process
+killed:
+
+```
+POST /api/quote  → 502  SUPPLIER_UNAVAILABLE
+GET  /api/search → 200  5 options from the survivors
+```
+
+Search degrades honestly. A quote does not degrade at all, because there is no
+useful approximation of what something costs.
+
+---
+
 ## Design decisions
 
 **Why a 1500ms per-supplier timeout.** Beta's latency ranges to 2000ms, so the
@@ -213,6 +261,25 @@ become dangerous the moment handling one means mutating a balance. Appending
 makes replay safe by construction and lets a booking's financial history be
 reconstructed from the ledger alone.
 
+**Why a quote fails where a search degrades.** A search missing one supplier is
+still useful — partial inventory beats no inventory, and the status strip says
+what is missing. A quote has no partial answer: booking at a price nobody
+confirmed is worse than not booking. So the same codebase runs opposite failure
+policies on purpose, and the 502 is a 502 rather than a 500 because nothing is
+wrong on our side.
+
+**Why quotes live in Postgres rather than Redis.** A quote lives five minutes,
+which argues for a cache. But it is also the provenance of an amount about to be
+charged, and evicting that under memory pressure is not a trade worth making on
+the money path.
+
+**Why idempotency is a unique index rather than a lookup.** Read-then-insert
+races: two concurrent requests both see no existing key and both insert. The
+constraint is the guarantee. The subtlety that cost real debugging: a replayed
+request violates _two_ constraints at once, and Postgres names whichever it
+checked first — so the recovery path has to ask "did this key already produce a
+booking?" rather than trusting which column was reported.
+
 **Why the booking state machine is a pure module.** No I/O, no database calls,
 no Stripe client. Illegal transitions throw. That keeps the rules exhaustively
 testable in isolation, which is what makes it credible that money-handling code
@@ -226,7 +293,7 @@ does the right thing under duplicate webhooks and races.
 - [x] **M2** — three mock suppliers + seeded inventory
 - [x] **M3** — `/api/search` fan-out, timeouts, normalization
 - [x] **M4** — SSE streaming, Redis cache, supplier-status UI
-- [ ] **M5** — quote revalidation, booking state machine, tests
+- [x] **M5** — quote revalidation, booking state machine, tests
 - [ ] **M6** — Stripe webhooks, idempotency, append-only ledger
 - [ ] **M7** — chaos mode, polish, full README
 

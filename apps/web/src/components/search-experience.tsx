@@ -43,7 +43,11 @@ export function SearchExperience({
         </p>
       )}
 
-      <ResultsList options={state.options} waiting={waiting} />
+      <ResultsList
+        options={state.options}
+        waiting={waiting}
+        apiUrl={streamOptions?.baseUrl ?? ""}
+      />
     </div>
   );
 }

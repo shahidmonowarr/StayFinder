@@ -14,9 +14,13 @@ jobs:
     name: Lint, typecheck, test
     runs-on: ubuntu-latest
 
-    # The in-memory cache is the supported no-dependency path and is tested
-    # everywhere. The Redis-backed one is only exercised where a Redis exists,
-    # so CI provides one rather than leaving that path permanently unrun.
+    # Both backing services are provided rather than left unrun. The in-memory
+    # cache is the supported no-dependency path and is tested everywhere; the
+    # Redis and Postgres paths only exist where those services do, and a suite
+    # that silently skips is a suite that is not protecting anything.
+    #
+    # Note these publish on the default ports: unlike a developer laptop, a CI
+    # runner has nothing already holding 5432.
     services:
       redis:
         image: redis:7-alpine
@@ -28,8 +32,25 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: stayfinder
+          POSTGRES_PASSWORD: stayfinder
+          POSTGRES_DB: stayfinder_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stayfinder -d stayfinder_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
       REDIS_URL: redis://localhost:6379
+      # The integration tests truncate between cases, so they get their own
+      # database and never share one with anything that matters.
+      TEST_DATABASE_URL: postgresql://stayfinder:stayfinder@localhost:5432/stayfinder_test
 
     steps:
       - uses: actions/checkout@v5
@@ -41,6 +62,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # `migrate deploy` rather than `migrate dev`: it applies the committed
+      # migrations and nothing else, so CI can never invent a schema change.
+      - name: Apply database migrations
+        run: npm run db:deploy -w @stayfinder/api
+        env:
+          DATABASE_URL: postgresql://stayfinder:stayfinder@localhost:5432/stayfinder_test
 
       # Kept as separate steps so a red build names its own cause.
       - name: Format
