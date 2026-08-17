@@ -38,6 +38,17 @@ export const env = {
    * is not a booking.
    */
   databaseUrl: process.env.DATABASE_URL === "" ? undefined : process.env.DATABASE_URL,
+  /** Unset means the fake payment provider — no account, no network, no keys. */
+  stripeSecretKey:
+    process.env.STRIPE_SECRET_KEY === "" || process.env.STRIPE_SECRET_KEY === "sk_test_replace_me"
+      ? undefined
+      : process.env.STRIPE_SECRET_KEY,
+  /**
+   * Signs webhook deliveries. The fake provider needs one too — it implements
+   * the same HMAC scheme — so this has a development default rather than being
+   * optional. A real deployment overrides it with Stripe's `whsec_...`.
+   */
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "whsec_local_development_only",
   suppliers: {
     alpha: url("SUPPLIER_ALPHA_URL", "http://localhost:4001"),
     beta: url("SUPPLIER_BETA_URL", "http://localhost:4002"),

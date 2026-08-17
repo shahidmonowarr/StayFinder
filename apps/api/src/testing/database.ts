@@ -29,14 +29,15 @@ export function testPrisma(): PrismaClient {
 /**
  * Empty the tables between cases.
  *
- * `TRUNCATE ... CASCADE` rather than deleting rows: it is faster, it resets
- * nothing we depend on, and it makes the cascade from bookings to their events
- * explicit rather than relying on delete order.
+ * `TRUNCATE ... CASCADE` rather than deleting rows: it is faster, and — the part
+ * that matters here — the ledger's append-only trigger is row-level, so it fires
+ * on DELETE but not on TRUNCATE. Tests can therefore reset cleanly without the
+ * guarantee being weakened for them.
  */
 export async function resetDatabase(): Promise<void> {
   const prisma = testPrisma();
   await prisma.$executeRawUnsafe(
-    'TRUNCATE TABLE "BookingEvent", "Booking", "Quote" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "BookingEvent", transactions, webhook_events, "Booking", "Quote" RESTART IDENTITY CASCADE',
   );
 }
 

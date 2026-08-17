@@ -2,6 +2,7 @@ import { createApp } from "./app";
 import { createSearchCache } from "./cache";
 import { createPrismaClient } from "./db/client";
 import { env } from "./env";
+import { createPaymentProvider } from "./payments";
 
 // Cache construction is async because the Redis client is imported on demand,
 // so boot is where the await happens rather than inside `createApp`.
@@ -12,7 +13,16 @@ if (prisma === undefined) {
   console.warn("[api] DATABASE_URL is unset — /api/quote and /api/bookings will return 503");
 }
 
-const app = createApp({ cache, ...(prisma === undefined ? {} : { prisma }) });
+const paymentProvider = await createPaymentProvider({
+  secretKey: env.stripeSecretKey,
+  webhookSecret: env.stripeWebhookSecret,
+});
+
+const app = createApp({
+  cache,
+  paymentProvider,
+  ...(prisma === undefined ? {} : { prisma }),
+});
 
 const server = app.listen(env.port, () => {
   console.info(`[api] listening on http://localhost:${env.port} (cache: ${cache.kind})`);

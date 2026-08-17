@@ -21,6 +21,7 @@
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
     "pg": "^8.23.0",
+    "stripe": "^22.5.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -1,7 +1,9 @@
 import { formatMoney } from "@stayfinder/shared";
 import { notFound } from "next/navigation";
 import { BookingTimeline, StateMachineLegend } from "@/components/booking-timeline";
-import type { BookingEventView, BookingView } from "@/lib/booking-api";
+import { LedgerTable } from "@/components/ledger-table";
+import { PaymentPanel } from "@/components/payment-panel";
+import type { BookingDetail } from "@/lib/booking-api";
 
 /**
  * A booking and its history.
@@ -12,22 +14,32 @@ import type { BookingEventView, BookingView } from "@/lib/booking-api";
  */
 export const dynamic = "force-dynamic";
 
-async function loadBooking(
-  id: string,
-): Promise<{ booking: BookingView; events: BookingEventView[] } | null> {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-  const response = await fetch(`${apiUrl}/api/bookings/${id}`, { cache: "no-store" });
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+async function loadBooking(id: string): Promise<BookingDetail | null> {
+  const response = await fetch(`${API_URL}/api/bookings/${id}`, { cache: "no-store" });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Booking service returned ${response.status}`);
-  return (await response.json()) as { booking: BookingView; events: BookingEventView[] };
+  return (await response.json()) as BookingDetail;
+}
+
+/** Which payment provider the API is running, so the page can offer the right controls. */
+async function loadProvider(): Promise<string> {
+  try {
+    const response = await fetch(`${API_URL}/health`, { cache: "no-store" });
+    const body = (await response.json()) as { payments?: string };
+    return body.payments ?? "fake";
+  } catch {
+    return "fake";
+  }
 }
 
 export default async function BookingPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const data = await loadBooking(id);
+  const [data, provider] = await Promise.all([loadBooking(id), loadProvider()]);
   if (data === null) notFound();
 
-  const { booking, events } = data;
+  const { booking, events, transactions } = data;
 
   return (
     <div className="max-w-2xl">
@@ -65,20 +77,17 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
         <StateMachineLegend status={booking.status} />
       </div>
 
-      <div className="mt-10 rounded border border-line bg-white p-4">
-        <p className="text-sm font-medium">Payment</p>
-        <p className="mt-1 text-sm text-muted">
-          This booking is <span className="font-medium">{booking.status}</span>. Card payment,
-          webhook-driven confirmation, and the refund path arrive in M6 — the state machine already
-          knows the transitions, but nothing drives them yet.
-        </p>
-        <button
-          type="button"
-          disabled
-          className="mt-3 rounded bg-ink px-3 py-1.5 text-sm text-white opacity-40"
-        >
-          Pay with card — M6
-        </button>
+      <div className="mt-10">
+        <LedgerTable entries={transactions} currency={booking.total.currency} />
+      </div>
+
+      <div className="mt-10">
+        <PaymentPanel
+          bookingId={booking.id}
+          status={booking.status}
+          apiUrl={API_URL}
+          simulated={provider === "fake"}
+        />
       </div>
     </div>
   );

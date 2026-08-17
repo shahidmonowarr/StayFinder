@@ -1,6 +1,6 @@
 "use client";
 
-import type { BookingStatus, Money } from "@stayfinder/shared";
+import type { BookingStatus, LedgerEntry, Money } from "@stayfinder/shared";
 
 /**
  * Client bindings for the quote and booking endpoints.
@@ -123,11 +123,14 @@ export async function createBooking(
   return (await response.json()) as { booking: BookingView; created: boolean };
 }
 
-export async function fetchBooking(
-  baseUrl: string,
-  id: string,
-): Promise<{ booking: BookingView; events: BookingEventView[] }> {
+export interface BookingDetail {
+  booking: BookingView;
+  events: BookingEventView[];
+  transactions: LedgerEntry[];
+}
+
+export async function fetchBooking(baseUrl: string, id: string): Promise<BookingDetail> {
   const response = await fetch(`${baseUrl}/api/bookings/${id}`);
   if (!response.ok) await readError(response);
-  return (await response.json()) as { booking: BookingView; events: BookingEventView[] };
+  return (await response.json()) as BookingDetail;
 }

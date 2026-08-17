@@ -524,11 +524,117 @@ M6's `transactions` ledger is the same idea applied to money: refunds will be ne
 rows, never updates, so a booking's financial history is reconstructible by
 replay.
 
-## Payments _(planned — M6)_
+## Payments
 
-Stripe test mode. Confirmation is webhook-driven rather than redirect-driven,
-duplicate deliveries are absorbed idempotently, and the append-only
-`transactions` ledger records every movement of money.
+### Confirmation is webhook-driven, never redirect-driven
+
+A browser can be closed, blocked, offline, or lose the tab. The webhook is the
+only delivery the provider retries, so it is the only thing permitted to confirm
+a booking. Starting checkout creates a payment intent and records its id — it
+confirms nothing. The page re-fetches rather than asserting an outcome: if the
+redirect and the webhook race, the webhook wins.
+
+### Two independent defences against duplicate delivery
+
+Stripe makes no at-most-once promise and retries after any non-2xx, so duplicate
+delivery is the normal operating condition rather than an edge case. Two
+different things go wrong, so there are two mechanisms:
+
+1. **The same event, delivered again.** `webhook_events` is keyed on the
+   provider's own event id. The insert conflicts, the work is skipped.
+2. **A different event that would repeat a transition already made.** The
+   primary key cannot see this one. `canTransition` does — a _considered_ no-op
+   after checking the booking is already CONFIRMED, not a caught exception.
+   Catching would make a genuine double-confirm look identical to a harmless
+   retry, and that difference is the only signal worth keeping.
+
+Observed live, on one booking:
+
+```
+deliver evt_live_demo   ×5  →  processed, duplicate, duplicate, duplicate, duplicate
+deliver evt_live_demo_2 ×1  →  already_in_state
+result: CONFIRMED, 2 state events, 1 ledger row
+```
+
+The event id is recorded **inside** the same transaction as the work. If the
+work fails and rolls back, that row goes with it, so the provider's retry gets a
+real second attempt. Recording it outside would mark a failed delivery as
+handled and lose the confirmation permanently.
+
+Once the signature checks out, every outcome returns `200` — duplicate, unknown
+booking, uninteresting type. A non-2xx tells the provider to redeliver, and none
+of those get better by being retried. A genuine processing failure is a `500` on
+purpose, because that one _should_ be.
+
+### Signature verification, and the raw-body trap
+
+The signature covers the exact bytes that were sent. `express.raw` is therefore
+mounted on the webhook path _before_ the global `express.json()` — reversed, the
+JSON parser consumes the stream and verification runs against a re-serialized
+object with different key order and whitespace. That passes every test that posts
+a JavaScript object and fails against the real provider.
+
+Stale timestamps are rejected: without a tolerance window a captured signature
+stays valid forever.
+
+### The ledger is append-only, enforced by Postgres
+
+```sql
+CREATE TRIGGER transactions_no_update_or_delete
+  BEFORE UPDATE OR DELETE ON "transactions"
+  FOR EACH ROW EXECUTE FUNCTION transactions_are_append_only();
+```
+
+A comment saying "never update this table" is a comment. This holds against
+application bugs, against a contributor who has not read the docs, and against
+anyone with a `psql` prompt:
+
+```
+UPDATE transactions SET "amountMinor" = 1;
+ERROR:  transactions is append-only: UPDATE is not permitted.
+        A refund is a new row, not an edit.
+```
+
+`TRUNCATE` is deliberately not covered — it is not a row-level operation, so the
+trigger never sees it, and the integration tests reset between cases with it.
+Wiping a table is a destructive admin action, not the silent rewriting of one row
+that this exists to prevent.
+
+Balance is derived by summing rows, never stored. A stored balance is a second
+source of truth that drifts the first time a write half-fails.
+
+### Cancellation is two steps
+
+`CANCELLED` is a real waiting state, not a moment in passing. Cancelling
+transitions the booking and _requests_ a refund; `CANCELLED → REFUNDED` and the
+`REFUND` ledger row come from the refund webhook, under the same discipline as
+confirmation. So a booking genuinely sits in "cancelled, money not yet returned",
+which is what `isPaid` models.
+
+```
+CHARGE  €389.70   pi_2650a436…
+REFUND −€389.70   re-b934bc3a…
+balance  €0.00
+```
+
+### The provider is a port
+
+`PaymentProvider` has two implementations. `FakePaymentProvider` needs no
+account and implements the _same_ HMAC signature scheme, so verification, replay
+rejection, and raw-body handling are genuinely exercised rather than skipped.
+`StripePaymentProvider` is selected automatically when `STRIPE_SECRET_KEY` is
+set.
+
+The fake does not simulate payment succeeding on a timer. Something has to
+_deliver_ an event, and a background timer pretending to be a webhook would
+bypass the signature check and the endpoint — the two things worth
+demonstrating. A dev-only route signs a real payload and posts it through the
+real handler instead, which is also what M7's chaos toggle will call.
+
+**The Stripe adapter is unverified.** Its event mapping is unit-tested against
+captured payload shapes, but its network calls have never run against the live
+API. That gap closes with `STRIPE_SECRET_KEY` in `.env` and
+`stripe listen --forward-to localhost:4000/api/webhooks/stripe`.
 
 ---
 

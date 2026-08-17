@@ -7,6 +7,7 @@ import {
   toBookingView,
   type BookingRepository,
 } from "../db/bookings";
+import type { LedgerRepository } from "../db/ledger";
 import type { QuoteRepository } from "../db/quotes";
 
 /**
@@ -27,6 +28,7 @@ export const CreateBookingSchema = z.object({
 export interface BookingRouteOptions {
   quotes: QuoteRepository;
   bookings: BookingRepository;
+  ledger?: LedgerRepository;
 }
 
 export function createBookingHandler(options: BookingRouteOptions): RequestHandler {
@@ -107,11 +109,16 @@ export function createGetBookingHandler(options: BookingRouteOptions): RequestHa
     }
 
     const events = await options.bookings.events(id);
+    const transactions = (await options.ledger?.forBooking(id)) ?? [];
+
     res.json({
       booking: toBookingView(booking),
       // The append-only history, oldest first — this is the state timeline the
       // confirmation page renders.
       events: events.map(toBookingEventView),
+      // The money side of the same idea. Balance is derived from these rows by
+      // the caller rather than sent as a stored figure.
+      transactions,
     });
   };
 }

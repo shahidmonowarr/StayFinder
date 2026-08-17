@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { uniqueViolationFields } from "./bookings";
+import { uniqueViolationFields } from "./prisma-errors";
 
 /**
  * These fixtures are copied verbatim from a real Prisma 7 error, captured by

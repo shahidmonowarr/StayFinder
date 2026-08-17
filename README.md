@@ -216,6 +216,57 @@ useful approximation of what something costs.
 
 ---
 
+## Then watch the safeguards hold
+
+Open a booking page and **Start checkout**. The booking stays `PENDING` — a
+payment intent is not a payment. Then **Deliver payment succeeded**, which signs
+a real event and posts it through the real webhook endpoint:
+
+```
+PENDING → CONFIRMED     ledger: CHARGE €389.70    balance €389.70
+```
+
+Now press **Redeliver the last event** four more times. Nothing happens, four
+times over:
+
+```
+delivery 1 → processed
+delivery 2 → duplicate
+delivery 3 → duplicate
+delivery 4 → duplicate
+delivery 5 → duplicate
+still: CONFIRMED, 2 state events, 1 ledger row
+```
+
+A _different_ event id repeating the same transition is caught by the other
+mechanism — the state machine — and reports `already_in_state`.
+
+**Cancel booking** moves it to `CANCELLED` and requests a refund. It stays there:
+cancelled, money not yet returned. Delivering the refund event completes it:
+
+```
+CHARGE  €389.70
+REFUND −€389.70
+balance  €0.00
+```
+
+And the ledger cannot be rewritten, by anyone:
+
+```bash
+docker compose exec postgres psql -U stayfinder -d stayfinder -c 'UPDATE transactions SET "amountMinor" = 1;'
+```
+
+```
+ERROR:  transactions is append-only: UPDATE is not permitted.
+        A refund is a new row, not an edit.
+```
+
+Payments run against a fake provider by default — no Stripe account needed — and
+it implements the same HMAC signature scheme, so the signature check is real.
+Set `STRIPE_SECRET_KEY` in `.env` to switch to Stripe test mode.
+
+---
+
 ## Design decisions
 
 **Why a 1500ms per-supplier timeout.** Beta's latency ranges to 2000ms, so the
@@ -253,6 +304,18 @@ So the cache only stores a response where all three suppliers reported `ok`.
 failed read reads as a miss and a failed write is dropped, logged either way.
 Redis falling over should cost latency, not correctness — and keeping that
 guarantee in one wrapper means it is tested once rather than in each backend.
+
+**Why confirmation is webhook-driven.** A redirect can be closed, blocked, or
+lost; the webhook is the only delivery a payment provider retries. If the
+redirect could confirm a booking, closing the tab mid-payment would decide the
+outcome. So the browser is not permitted to confirm anything, and the page
+re-fetches instead of asserting.
+
+**Why duplicate webhooks need two defences.** The same event arriving twice is
+caught by a primary key on the provider's event id. A _different_ event that
+would repeat a transition already made slips past that entirely — the state
+machine catches it instead, as a deliberate no-op rather than a swallowed
+exception. Two failure modes, two mechanisms.
 
 **Why the ledger is append-only.** A refund is a new row, never an update to
 the row it reverses. Payment state that can be overwritten cannot be audited,
@@ -294,7 +357,7 @@ does the right thing under duplicate webhooks and races.
 - [x] **M3** — `/api/search` fan-out, timeouts, normalization
 - [x] **M4** — SSE streaming, Redis cache, supplier-status UI
 - [x] **M5** — quote revalidation, booking state machine, tests
-- [ ] **M6** — Stripe webhooks, idempotency, append-only ledger
+- [x] **M6** — Stripe webhooks, idempotency, append-only ledger
 - [ ] **M7** — chaos mode, polish, full README
 
 ## Tech
