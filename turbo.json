@@ -12,6 +12,7 @@
     "SUPPLIER_BETA_URL",
     "SUPPLIER_GAMMA_URL",
     "NEXT_PUBLIC_API_URL",
+    "WEB_ORIGIN",
     "DATABASE_URL",
     "REDIS_URL"
   ],

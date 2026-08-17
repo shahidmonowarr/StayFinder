@@ -17,6 +17,12 @@ export interface FixtureServer {
   url: string;
   /** Paths and query strings this server was asked for, in order. */
   requests: string[];
+  /**
+   * Requests whose socket closed before this server answered — i.e. ones the
+   * caller aborted. Proves the deadline and the client-disconnect path actually
+   * cancel work rather than just stopping to listen for it.
+   */
+  aborted: string[];
   close(): Promise<void>;
 }
 
@@ -47,9 +53,14 @@ export function silentHandler(): FixtureHandler {
 
 export async function startFixtureServer(handler: FixtureHandler): Promise<FixtureServer> {
   const requests: string[] = [];
+  const aborted: string[] = [];
 
   const server: Server = createServer((req, res) => {
-    requests.push(req.url ?? "");
+    const url = req.url ?? "";
+    requests.push(url);
+    res.on("close", () => {
+      if (!res.writableEnded) aborted.push(url);
+    });
     handler(req, res);
   });
 
@@ -65,6 +76,7 @@ export async function startFixtureServer(handler: FixtureHandler): Promise<Fixtu
   return {
     url: `http://127.0.0.1:${address.port}`,
     requests,
+    aborted,
     close: () =>
       new Promise<void>((resolve, reject) => {
         // closeAllConnections, or a request parked by silentHandler keeps the

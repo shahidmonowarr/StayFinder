@@ -11,6 +11,12 @@
   --color-surface: oklch(0.99 0.002 250);
   --color-accent: oklch(0.55 0.12 220);
 
+  /* Supplier-status semantics. Muted on purpose: the strip should read as
+     information, not as an alarm going off every time Gamma misbehaves. */
+  --color-ok: oklch(0.52 0.11 155);
+  --color-warn: oklch(0.62 0.12 75);
+  --color-bad: oklch(0.55 0.16 25);
+
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
 }

@@ -8,6 +8,7 @@ import {
   GAMMA_SEARCH_PAYLOAD,
 } from "../adapters/fixtures";
 import { createApp } from "../app";
+import { resilientCache } from "../cache";
 import {
   jsonHandler,
   plainTextHandler,
@@ -198,6 +199,98 @@ describe("GET /api/search — supplier isolation", () => {
       status: "ok",
       resultCount: 0,
     });
+  });
+});
+
+describe("GET /api/search — caching", () => {
+  it("serves an identical repeat search from cache", async () => {
+    const { app, alpha } = await appWith({});
+
+    const first = await search(app).expect(200);
+    const second = await search(app).expect(200);
+
+    expect((first.body as SearchResponse).cached).toBe(false);
+    expect((second.body as SearchResponse).cached).toBe(true);
+    // One fan-out, not two.
+    expect(alpha.requests).toHaveLength(1);
+  });
+
+  it("returns byte-identical options from cache", async () => {
+    const { app } = await appWith({});
+
+    const first = await search(app).expect(200);
+    const second = await search(app).expect(200);
+
+    expect((second.body as SearchResponse).options).toEqual((first.body as SearchResponse).options);
+    expect((second.body as SearchResponse).suppliers).toEqual(
+      (first.body as SearchResponse).suppliers,
+    );
+  });
+
+  it("treats a different query as a different entry", async () => {
+    const { app, alpha } = await appWith({});
+
+    await search(app).expect(200);
+    await search(app, { guests: "3" }).expect(200);
+
+    expect(alpha.requests).toHaveLength(2);
+  });
+
+  it("shares one entry across spellings of the same destination", async () => {
+    const { app, alpha } = await appWith({});
+
+    await search(app, { destination: "Lisbon" }).expect(200);
+    const second = await search(app, { destination: "  lisbon " }).expect(200);
+
+    expect((second.body as SearchResponse).cached).toBe(true);
+    expect(alpha.requests).toHaveLength(1);
+  });
+
+  it("refuses to cache a result set with a timed-out supplier", async () => {
+    // Otherwise a single slow moment would serve degraded results for 60s.
+    const { app } = await appWith({ beta: silentHandler(), timeoutMs: 100 });
+
+    await search(app).expect(200);
+    const second = await search(app).expect(200);
+
+    expect((second.body as SearchResponse).cached).toBe(false);
+  });
+
+  it("refuses to cache a result set with a failed supplier", async () => {
+    const { app } = await appWith({ gamma: plainTextHandler(500) });
+
+    await search(app).expect(200);
+    const second = await search(app).expect(200);
+
+    expect((second.body as SearchResponse).cached).toBe(false);
+  });
+
+  it("still answers when the cache itself is broken", async () => {
+    // A cache is an optimization. Redis falling over must cost latency, not
+    // correctness.
+    const alpha = await startFixtureServer(jsonHandler(ALPHA_SEARCH_PAYLOAD));
+    const beta = await startFixtureServer(jsonHandler(BETA_SEARCH_PAYLOAD));
+    const gamma = await startFixtureServer(jsonHandler(GAMMA_SEARCH_PAYLOAD));
+    servers = [alpha, beta, gamma];
+
+    const app = createApp({
+      adapters: createAdapters({ alpha: alpha.url, beta: beta.url, gamma: gamma.url }),
+      timeoutMs: 500,
+      cache: resilientCache(
+        {
+          kind: "redis",
+          get: () => Promise.reject(new Error("connection lost")),
+          set: () => Promise.reject(new Error("connection lost")),
+          close: () => Promise.resolve(),
+        },
+        () => undefined,
+      ),
+    });
+
+    const res = await search(app).expect(200);
+
+    expect((res.body as SearchResponse).options).toHaveLength(7);
+    expect((res.body as SearchResponse).cached).toBe(false);
   });
 });
 

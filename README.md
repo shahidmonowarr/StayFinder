@@ -136,8 +136,35 @@ The `-sTCP:LISTEN` matters: without it `lsof` also lists the API's _client_
 socket to port 4001 and you may kill the aggregator instead of the supplier.
 
 The seven options collapse into four buildings. Beta — the slowest supplier —
-holds the best price on the one all three sell, which is exactly why M4 streams
-results instead of sorting once at the end.
+holds the best price on the one all three sell.
+
+---
+
+## Watch it stream
+
+Open **http://localhost:3000**. The page searches on load: Alpha's rates appear
+in ~100ms against skeleton cards, Gamma fills in around 300ms, and Beta arrives
+a second later — often re-sorting the list, because it holds the cheapest room on
+the property all three sell. The status strip above the results shows each
+supplier's state as it happens.
+
+The same stream from a terminal:
+
+```bash
+curl -N "localhost:4000/api/search/stream?destination=Lisbon&checkIn=2026-09-01&checkOut=2026-09-04&guests=2"
+```
+
+```
+[    0ms] meta   cached=false suppliers=[alpha, beta, gamma]
+[   85ms] leg    alpha  ok         122ms  3 options
+[  312ms] leg    gamma  ok         336ms  2 options
+[ 1478ms] leg    beta   timeout   1503ms  0 options
+[ 1478ms] done   elapsed=1517ms
+```
+
+Search the same thing twice and the second one comes back `cached=true` with
+everything at 0ms — but only if all three suppliers succeeded the first time. A
+result set with a timeout in it is deliberately not cached.
 
 ---
 
@@ -168,6 +195,17 @@ across nights, the nightly rate is treated as display-grade and the stay total
 stays authoritative, so the amount charged is always the amount the supplier
 actually quoted.
 
+**Why partial results are never cached.** A 60s cache entry holding a response
+where one supplier failed would serve that degraded result to every visitor for
+the next minute. Re-running a fan-out costs one round of supplier calls; sticky
+partial failure costs a minute of prices that are wrong in a way nobody can see.
+So the cache only stores a response where all three suppliers reported `ok`.
+
+**Why a cache can never break a search.** Both cache backends are wrapped so a
+failed read reads as a miss and a failed write is dropped, logged either way.
+Redis falling over should cost latency, not correctness — and keeping that
+guarantee in one wrapper means it is tested once rather than in each backend.
+
 **Why the ledger is append-only.** A refund is a new row, never an update to
 the row it reverses. Payment state that can be overwritten cannot be audited,
 and duplicate webhook deliveries — which Stripe makes no promise to avoid —
@@ -187,7 +225,7 @@ does the right thing under duplicate webhooks and races.
 - [x] **M1** — monorepo scaffold, shared model, CI
 - [x] **M2** — three mock suppliers + seeded inventory
 - [x] **M3** — `/api/search` fan-out, timeouts, normalization
-- [ ] **M4** — SSE streaming, Redis cache, supplier-status UI
+- [x] **M4** — SSE streaming, Redis cache, supplier-status UI
 - [ ] **M5** — quote revalidation, booking state machine, tests
 - [ ] **M6** — Stripe webhooks, idempotency, append-only ledger
 - [ ] **M7** — chaos mode, polish, full README

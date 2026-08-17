@@ -25,6 +25,13 @@ function url(name: string, fallback: string): string {
 
 export const env = {
   port: port("API_PORT", 4000),
+  /**
+   * Unset means "use the in-memory cache" rather than "misconfigured". The demo
+   * has to run on a laptop with nothing installed, so absence is a valid state.
+   */
+  redisUrl: process.env.REDIS_URL === "" ? undefined : process.env.REDIS_URL,
+  /** The browser origin allowed to call this API. `*` permits any. */
+  webOrigin: process.env.WEB_ORIGIN ?? "http://localhost:3000",
   suppliers: {
     alpha: url("SUPPLIER_ALPHA_URL", "http://localhost:4001"),
     beta: url("SUPPLIER_BETA_URL", "http://localhost:4002"),

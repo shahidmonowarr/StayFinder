@@ -1,36 +1,45 @@
-import { SUPPLIER_IDS } from "@stayfinder/shared";
+import type { SearchQuery } from "@stayfinder/shared";
+import { SearchExperience } from "@/components/search-experience";
 
 /**
- * Placeholder landing page. The real search experience — progressive results
- * and the supplier-status strip — replaces this in M3/M4.
+ * Defaults are computed on the server and handed down as props.
+ *
+ * Computing them in the client component instead would mean the server and the
+ * browser could disagree about "today" across a midnight boundary, which React
+ * reports as a hydration mismatch. One authority, passed down, has no such race.
  */
+export const dynamic = "force-dynamic";
+
+function isoDate(daysFromNow: number): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + daysFromNow);
+  return date.toISOString().slice(0, 10);
+}
+
 export default function HomePage() {
+  const initialQuery: SearchQuery = {
+    destination: "Lisbon",
+    checkIn: isoDate(14),
+    checkOut: isoDate(17),
+    guests: 2,
+  };
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-3xl font-semibold tracking-tight text-balance">
-        Hotel search across three suppliers that agree on nothing.
+    <div>
+      <h1 className="text-2xl font-semibold tracking-tight text-balance">
+        Three suppliers, one search, none of them in agreement.
       </h1>
-      <p className="mt-5 leading-relaxed text-muted">
-        StayFinder fans out every search to multiple hotel suppliers in parallel, normalizes three
-        incompatible response formats into one model, and streams results back as each supplier
-        answers — without letting a slow or failing supplier break the page.
+      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
+        Every search fans out to three hotel suppliers in parallel with a 1500ms deadline each.
+        Results stream in as they answer — watch the list re-sort when the slowest supplier turns
+        out to have the cheapest room, and watch the page carry on when one of them fails.
       </p>
 
-      <section className="mt-12">
-        <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Suppliers</h2>
-        <ul className="mt-3 divide-y divide-line border-y border-line">
-          {SUPPLIER_IDS.map((supplier) => (
-            <li key={supplier} className="flex items-center justify-between py-3 text-sm">
-              <span className="font-medium capitalize">Supplier {supplier}</span>
-              <span className="text-xs text-muted">not wired up yet</span>
-            </li>
-          ))}
-        </ul>
-      </section>
-
-      <p className="mt-12 text-sm text-muted">
-        Milestone 1 of 7 — scaffold and CI. Search lands in M3.
-      </p>
+      <div className="mt-8">
+        <SearchExperience initialQuery={initialQuery} streamOptions={{ baseUrl: apiUrl }} />
+      </div>
     </div>
   );
 }

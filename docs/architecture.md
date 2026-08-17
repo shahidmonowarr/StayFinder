@@ -325,12 +325,87 @@ Beta — the slowest supplier — holds the best price on the property all three
 sell. That is the case that makes progressive streaming interesting rather than
 merely faster: the cheapest result is the last to arrive.
 
-## Progressive delivery and caching _(planned — M4)_
+## Progressive delivery
 
-Results stream to the browser over SSE as each supplier resolves, so Alpha's
-~100ms results render while Beta is still thinking. Search results are cached in
-Redis for 60s, keyed by `(destination, checkIn, checkOut, guests)`, with an
-in-memory fallback so the demo runs with nothing installed.
+`/api/search/stream` pushes each supplier's results the moment they exist.
+`fanOut` gained an `onLeg` callback that fires per leg in _completion_ order;
+the buffered route omits it, the SSE route turns each call into an event. One
+orchestrator, so there is no second copy of the deadline logic to drift.
+
+```
+event: meta   {query, suppliers: ["alpha","beta","gamma"], cached}
+event: leg    {meta: SupplierMeta, options: HotelOption[]}   × 3
+event: done   {elapsedMs}
+```
+
+A `leg` carries a supplier's status _and_ its options together. Separate status
+and result events would force the client to correlate them for no benefit: a
+leg either produced options or it did not, and either way that is one fact
+arriving at one moment.
+
+Watched from a terminal — which is the practical reason for SSE over a chunked
+JSON stream:
+
+```
+[    0ms] meta   cached=False suppliers=['alpha', 'beta', 'gamma']
+[   85ms] leg    alpha  ok         122ms  3 options
+[  312ms] leg    gamma  ok         336ms  2 options
+[ 1478ms] leg    beta   timeout   1503ms  0 options
+[ 1478ms] done   elapsed=1517ms
+```
+
+The client accumulates and re-sorts with `compareByPrice` from
+`packages/shared` on every arrival, which is why a cheap late supplier visibly
+jumps to the top rather than appearing at the bottom.
+
+Two details that decide whether this works at all in front of a proxy:
+`Cache-Control: no-transform` (a proxy that compresses the body buffers it, and
+buffering defeats the entire point) and `X-Accel-Buffering: no`. A client
+disconnect aborts the in-flight legs — with nobody to send to, holding supplier
+connections open is pure waste.
+
+`EventSource` reconnects automatically, so the client **must** close on `done`.
+A stream left open would silently re-run the whole fan-out, forever.
+
+## Caching
+
+Redis with a 60s TTL, keyed `search:v1:{destination}:{checkIn}:{checkOut}:{guests}`,
+falling back to an in-memory cache when `REDIS_URL` is unset so the demo runs on
+a laptop with nothing installed.
+
+**A cache never breaks a search.** `resilientCache` wraps either backend: a
+failed read reads as a miss, a failed write is dropped, both reported through a
+logger. That guarantee lives in one place, which is why the two backends
+underneath are thin and allowed to throw.
+
+**Only complete result sets are cached.** If Gamma 500s, storing that response
+would hand the degraded set to every visitor for the next minute. A re-run costs
+one fan-out; sticky partial failure costs sixty seconds of wrong prices. Live,
+across three consecutive searches:
+
+```
+attempt 1   cached=False   alpha ok · gamma error · beta timeout   → not stored
+attempt 2   cached=False   alpha ok · gamma ok    · beta ok        → stored
+attempt 3   cached=True    all three legs replayed at 0ms
+```
+
+A hit replays the same event protocol rather than short-circuiting it, so the
+client keeps one code path and can still show what each supplier contributed —
+honestly labelled as cached.
+
+The `v1` in the key is load-bearing: `HotelOption` changes in later milestones,
+and a running Redis would otherwise serve entries of the old shape into new code.
+
+## The supplier-status strip
+
+`pending` and `slow` exist only in the UI. The API reports `ok` / `timeout` /
+`error` — facts. Whether 800ms counts as "slow" is a judgement about humans and
+does not belong in a response contract, so it is a client-side timer instead.
+
+Cross-origin access is a real requirement, not an oversight: the page is served
+from `:3000` and calls the API on `:4000` directly, because the aggregator is a
+separate service rather than a Next.js route handler. The alternative — proxying
+through Next's `rewrites` — would hide that topology in the network tab.
 
 ## Quote revalidation _(planned — M5)_
 

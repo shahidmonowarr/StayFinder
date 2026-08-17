@@ -255,6 +255,118 @@ describe("fanOut — isolation", () => {
   });
 });
 
+describe("fanOut — per-leg notification", () => {
+  it("fires once per supplier", async () => {
+    const seen: string[] = [];
+
+    await fanOut(
+      [
+        okAdapter("alpha", [option("alpha", "A", 10000)]),
+        okAdapter("beta", []),
+        okAdapter("gamma", [option("gamma", "C", 30000)]),
+      ],
+      QUERY,
+      { onLeg: (leg) => seen.push(leg.meta.supplier) },
+    );
+
+    expect(seen).toHaveLength(3);
+    expect([...seen].sort()).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("fires in completion order, not adapter order", async () => {
+    // The reason the callback exists: Alpha's results must be pushable while
+    // Beta is still thinking. Adapter order would defeat that entirely.
+    const seen: string[] = [];
+
+    await fanOut(
+      [slowAdapter("alpha", 40, []), okAdapter("beta", []), slowAdapter("gamma", 20, [])],
+      QUERY,
+      { onLeg: (leg) => seen.push(leg.meta.supplier) },
+    );
+
+    expect(seen).toEqual(["beta", "gamma", "alpha"]);
+  });
+
+  it("fires before the fan-out as a whole resolves", async () => {
+    let firstLegAt: number | undefined;
+    const startedAt = performance.now();
+
+    await fanOut([okAdapter("alpha", []), slowAdapter("beta", 60, [])], QUERY, {
+      onLeg: () => {
+        firstLegAt ??= performance.now() - startedAt;
+      },
+    });
+
+    const totalMs = performance.now() - startedAt;
+    expect(firstLegAt).toBeLessThan(totalMs);
+    expect(totalMs).toBeGreaterThanOrEqual(50);
+  });
+
+  it("reports a failed leg through the callback too", async () => {
+    const seen: string[] = [];
+
+    await fanOut([failingAdapter("gamma", new SupplierResponseError("gamma", 500))], QUERY, {
+      onLeg: (leg) => seen.push(`${leg.meta.supplier}:${leg.meta.status}`),
+    });
+
+    // A supplier failing is news the UI needs as promptly as a success.
+    expect(seen).toEqual(["gamma:error"]);
+  });
+
+  it("hands the callback the same options that end up in the result", async () => {
+    const collected: string[] = [];
+
+    const result = await fanOut(
+      [
+        okAdapter("alpha", [option("alpha", "A", 10000)]),
+        okAdapter("beta", [option("beta", "B", 20000)]),
+      ],
+      QUERY,
+      { onLeg: (leg) => collected.push(...leg.options.map((o) => o.id)) },
+    );
+
+    expect(collected.sort()).toEqual(result.options.map((o) => o.id).sort());
+  });
+});
+
+describe("fanOut — external cancellation", () => {
+  it("aborts in-flight legs when the caller's signal fires", async () => {
+    const controller = new AbortController();
+    const started = performance.now();
+
+    const pending = fanOut([hangingAdapter("beta")], QUERY, {
+      // Deliberately far beyond the abort, so only the signal can end this.
+      timeoutMs: 5000,
+      signal: controller.signal,
+    });
+    setTimeout(() => controller.abort(), 30);
+
+    const result = await pending;
+
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(result.suppliers[0]?.status).toBe("timeout");
+  });
+
+  it("still applies the deadline when no external signal is given", async () => {
+    const result = await fanOut([hangingAdapter("beta")], QUERY, { timeoutMs: 30 });
+
+    expect(result.suppliers[0]?.status).toBe("timeout");
+  });
+
+  it("ends on whichever fires first — deadline or caller", async () => {
+    const controller = new AbortController();
+
+    // Deadline is shorter than any abort we would send, so it wins.
+    const result = await fanOut([hangingAdapter("beta")], QUERY, {
+      timeoutMs: 30,
+      signal: controller.signal,
+    });
+
+    expect(result.suppliers[0]?.status).toBe("timeout");
+    controller.abort();
+  });
+});
+
 describe("fanOut — deadlines", () => {
   it("runs the legs concurrently, so the total is one timeout and not three", async () => {
     const startedAt = performance.now();

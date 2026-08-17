@@ -1,15 +1,14 @@
 import type { SearchResponse } from "@stayfinder/shared";
 import type { Request, RequestHandler, Response } from "express";
-import type { SupplierAdapter } from "../adapters/types";
-import { fanOut } from "../orchestrator/fanout";
+import { runSearch, type SearchServiceOptions } from "./search-service";
 import { parseSearchRequest } from "./search-request";
 
-export interface SearchRouteOptions {
-  adapters: readonly SupplierAdapter[];
-  timeoutMs?: number;
-}
-
-export function createSearchHandler(options: SearchRouteOptions): RequestHandler {
+/**
+ * The buffered search. Kept alongside the SSE route because not every consumer
+ * wants a stream — a server-to-server caller wants one JSON body, and a cache
+ * hit is one anyway.
+ */
+export function createSearchHandler(service: SearchServiceOptions): RequestHandler {
   return async (req: Request, res: Response) => {
     const parsed = parseSearchRequest(req.query);
     if (!parsed.ok) {
@@ -17,9 +16,7 @@ export function createSearchHandler(options: SearchRouteOptions): RequestHandler
       return;
     }
 
-    const result = await fanOut(options.adapters, parsed.query, {
-      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
-    });
+    const outcome = await runSearch(service, parsed.query);
 
     // Always 200, even when every supplier failed. A search that found nothing
     // because the suppliers are down is a successful search with an honest
@@ -27,10 +24,9 @@ export function createSearchHandler(options: SearchRouteOptions): RequestHandler
     // present it, and `suppliers[]` gives it what it needs to do that.
     const body: SearchResponse = {
       query: parsed.query,
-      options: result.options,
-      suppliers: result.suppliers,
-      // Filled in for real by the Redis layer in M4.
-      cached: false,
+      options: outcome.result.options,
+      suppliers: outcome.result.suppliers,
+      cached: outcome.cached,
     };
 
     res.json(body);

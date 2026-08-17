@@ -27,6 +27,22 @@ export interface FanOutOptions {
   timeoutMs?: number;
   /** Injectable clock so latency assertions do not depend on real time. */
   now?: () => number;
+  /**
+   * Called the moment a leg settles, before the fan-out as a whole finishes.
+   * This is the hook the SSE route uses to push a supplier's results the
+   * instant they exist; the buffered route simply omits it.
+   *
+   * Fires in *completion* order — Alpha at ~100ms, Beta a second later — which
+   * is the whole point. The final `suppliers` array stays in adapter order so
+   * the buffered response remains stable.
+   */
+  onLeg?: (leg: LegOutcome) => void;
+  /**
+   * Cancels every in-flight leg. Used when the SSE client disconnects: there is
+   * nobody left to send results to, so continuing to hold supplier connections
+   * open is pure waste.
+   */
+  signal?: AbortSignal;
 }
 
 export interface FanOutResult {
@@ -34,7 +50,7 @@ export interface FanOutResult {
   suppliers: SupplierMeta[];
 }
 
-interface LegOutcome {
+export interface LegOutcome {
   meta: SupplierMeta;
   options: HotelOption[];
 }
@@ -94,16 +110,37 @@ function classify(error: unknown): { status: "timeout" | "error"; message: strin
   return { status: "error", message: "Supplier failed for an unknown reason" };
 }
 
-async function runLeg(
-  adapter: SupplierAdapter,
-  query: SearchQuery,
-  timeoutMs: number,
-  now: () => number,
-): Promise<LegOutcome> {
+interface LegContext {
+  query: SearchQuery;
+  timeoutMs: number;
+  now: () => number;
+  /** The caller's cancellation, if any — combined with, not replacing, the deadline. */
+  external: AbortSignal | undefined;
+  onLeg: ((leg: LegOutcome) => void) | undefined;
+}
+
+async function runLeg(adapter: SupplierAdapter, context: LegContext): Promise<LegOutcome> {
+  const { timeoutMs, now, external } = context;
   const startedAt = now();
   // A fresh signal per leg: one supplier's deadline must not cancel another's.
-  const signal = AbortSignal.timeout(timeoutMs);
+  // When the caller supplies its own signal, the leg answers to whichever fires
+  // first — its deadline, or the client hanging up.
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const signal = external ? AbortSignal.any([deadline, external]) : deadline;
 
+  const outcome = await settle(adapter, signal, startedAt, context);
+  // Notified here rather than by the caller after `allSettled`, because the
+  // whole value of this callback is that it fires before the slow legs finish.
+  context.onLeg?.(outcome);
+  return outcome;
+}
+
+async function settle(
+  adapter: SupplierAdapter,
+  signal: AbortSignal,
+  startedAt: number,
+  { query, now }: LegContext,
+): Promise<LegOutcome> {
   try {
     const result = await adapter.search(query, signal);
     return {
@@ -139,8 +176,13 @@ export async function fanOut(
   query: SearchQuery,
   options: FanOutOptions = {},
 ): Promise<FanOutResult> {
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const now = options.now ?? (() => performance.now());
+  const context: LegContext = {
+    query,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    now: options.now ?? (() => performance.now()),
+    external: options.signal,
+    onLeg: options.onLeg,
+  };
 
   // All legs are dispatched before any is awaited, so the deadlines run
   // concurrently: worst-case wall clock is one timeout, not the sum of three.
@@ -148,9 +190,7 @@ export async function fanOut(
   // `runLeg` is written never to reject. `allSettled` is the belt to that
   // braces: if it ever does — a bug in classification, say — the result is one
   // degraded supplier rather than a 500 for the whole search.
-  const settled = await Promise.allSettled(
-    adapters.map((adapter) => runLeg(adapter, query, timeoutMs, now)),
-  );
+  const settled = await Promise.allSettled(adapters.map((adapter) => runLeg(adapter, context)));
 
   const suppliers: SupplierMeta[] = [];
   const collected: HotelOption[] = [];
