@@ -1,0 +1,13 @@
+// Data model lands in M5 (bookings + state machine) and M6 (append-only
+// transactions ledger). The datasource and generator are wired up now so the
+// milestone that needs them starts with `prisma migrate dev`, not setup.
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}

@@ -1,0 +1,31 @@
+{
+  "name": "@stayfinder/supplier-gamma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mock supplier — GraphQL, nested payloads, flaky",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsup src/index.ts --format esm --clean --sourcemap",
+    "start": "node dist/index.js",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@stayfinder/eslint-config": "*",
+    "@stayfinder/tsconfig": "*",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.15.3",
+    "@types/supertest": "^7.2.1",
+    "eslint": "^10.8.1",
+    "supertest": "^7.2.2",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.12",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

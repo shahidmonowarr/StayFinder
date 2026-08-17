@@ -1,0 +1,22 @@
+{
+  "name": "@stayfinder/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@stayfinder/eslint-config": "*",
+    "@stayfinder/tsconfig": "*",
+    "@types/node": "^22.15.3",
+    "eslint": "^10.8.1",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

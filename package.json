@@ -1,0 +1,30 @@
+{
+  "name": "stayfinder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-supplier hotel search and booking engine",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "suppliers/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "npm@10.9.2",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "verify": "npm run format:check && npm run lint && npm run typecheck && npm run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.9.6",
+    "turbo": "^2.10.10",
+    "typescript": "~5.9.3"
+  }
+}

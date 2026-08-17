@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.next/
+coverage/
+.turbo/
+**/src/generated/
+package-lock.json
+
+# Authored by hand and read as a spec — Prettier must not reflow it.
+CLAUDE.md

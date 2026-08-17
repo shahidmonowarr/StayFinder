@@ -1,0 +1,120 @@
+# StayFinder
+
+**Live demo:** _(link placeholder — added in M7)_
+
+An online travel agency owns no inventory: it has to ask suppliers, and every
+supplier speaks a different dialect, answers at a different speed, and
+occasionally lies about the price. StayFinder is a miniature booking engine that
+fans a single search out to three deliberately incompatible hotel suppliers in
+parallel, normalizes their responses into one model, and streams results back as
+each one answers — without letting a slow or broken supplier break the page. It
+then walks a booking through quote revalidation, payment, and a strictly
+enforced state machine backed by an append-only ledger.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    WEB["Next.js<br/>:3000"] -->|"streamed results"| API["Aggregation API<br/>:4000"]
+    API --> CACHE[("Redis · 60s")]
+    API --> DB[("Postgres<br/>bookings + ledger")]
+    API -->|"parallel fan-out<br/>1500ms deadline each"| A["Alpha :4001<br/>REST · cents · fast"]
+    API --> B["Beta :4002<br/>REST · strings · slow"]
+    API --> G["Gamma :4003<br/>GraphQL · flaky"]
+```
+
+The three suppliers are real separate processes, not in-process fakes — that is
+what makes the timeout, partial-failure, and streaming behaviour genuine rather
+than simulated. Full detail in [`docs/architecture.md`](docs/architecture.md).
+
+| Supplier | Protocol           | Price format                | Personality               |
+| -------- | ------------------ | --------------------------- | ------------------------- |
+| Alpha    | REST, `camelCase`  | integer cents, per night    | fast (~100ms), reliable   |
+| Beta     | REST, `snake_case` | decimal strings, stay total | slow (800–2000ms)         |
+| Gamma    | GraphQL, nested    | nested object, per night    | 20% 500s, 10% price drift |
+
+---
+
+## Local setup
+
+```bash
+git clone <repo-url> stayfinder && cd stayfinder
+cp .env.example .env
+docker compose up -d          # Postgres + Redis (optional in M1–M4)
+npm install
+npm run dev
+```
+
+That brings up the web app on `:3000`, the API on `:4000`, and the three
+suppliers on `:4001`–`:4003`.
+
+Useful scripts:
+
+```bash
+npm run verify    # format check + lint + typecheck + test — what CI runs
+npm run test      # Vitest across every workspace
+npm run build     # production build of every workspace
+```
+
+Redis is optional: with `REDIS_URL` unset the API falls back to an in-memory
+cache so the demo runs on a laptop with nothing installed.
+
+---
+
+## Design decisions
+
+**Why a 1500ms per-supplier timeout.** Beta's latency ranges to 2000ms, so the
+deadline sits deliberately below its ceiling. A search that waits for every
+supplier is as slow as the worst one; a search that gives up too early throws
+away good inventory. 1500ms is the point where the response is still
+perceptibly fast and Beta usually — but not always — makes it, which means the
+timeout path is exercised in normal use instead of only in tests.
+
+**Why results stream.** Alpha answers in ~100ms and Beta can take twenty times
+that. Buffering until every supplier resolves would hand the user a blank page
+for the duration of the slowest one, so results are pushed as each supplier
+lands and the supplier-status strip shows what is still outstanding. Partial
+results shown honestly beat complete results shown late.
+
+**Why per-supplier status is in the response contract.** A search where one
+supplier failed is still a valid search, but it is not a complete one. Making
+`suppliers[]` part of the payload rather than a debug field means the UI cannot
+accidentally present a degraded result set as if it were the whole market.
+
+**Why money is an integer.** Prices are stored in minor units and decimal
+strings are parsed by string surgery, not `parseFloat` — `0.29 * 100` is
+`28.999999999999996` in IEEE-754. Where a stay total will not divide evenly
+across nights, the nightly rate is treated as display-grade and the stay total
+stays authoritative, so the amount charged is always the amount the supplier
+actually quoted.
+
+**Why the ledger is append-only.** A refund is a new row, never an update to
+the row it reverses. Payment state that can be overwritten cannot be audited,
+and duplicate webhook deliveries — which Stripe makes no promise to avoid —
+become dangerous the moment handling one means mutating a balance. Appending
+makes replay safe by construction and lets a booking's financial history be
+reconstructed from the ledger alone.
+
+**Why the booking state machine is a pure module.** No I/O, no database calls,
+no Stripe client. Illegal transitions throw. That keeps the rules exhaustively
+testable in isolation, which is what makes it credible that money-handling code
+does the right thing under duplicate webhooks and races.
+
+---
+
+## Milestones
+
+- [x] **M1** — monorepo scaffold, shared model, CI
+- [ ] **M2** — three mock suppliers + seeded inventory
+- [ ] **M3** — `/api/search` fan-out, timeouts, normalization
+- [ ] **M4** — SSE streaming, Redis cache, supplier-status UI
+- [ ] **M5** — quote revalidation, booking state machine, tests
+- [ ] **M6** — Stripe webhooks, idempotency, append-only ledger
+- [ ] **M7** — chaos mode, polish, full README
+
+## Tech
+
+TypeScript throughout. Next.js (App Router) + Tailwind, Express, Postgres +
+Prisma, Redis, Vitest, Turborepo, GitHub Actions.
