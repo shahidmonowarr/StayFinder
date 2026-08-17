@@ -6,6 +6,7 @@ import {
 } from "@stayfinder/shared";
 import type { Request, RequestHandler, Response } from "express";
 import type { LegOutcome } from "../orchestrator/fanout";
+import { chaosContextFrom } from "./chaos";
 import { legsFromCache, runSearch, type SearchServiceOptions } from "./search-service";
 import { parseSearchRequest } from "./search-request";
 
@@ -66,6 +67,8 @@ export function createSearchStreamHandler(service: SearchServiceOptions): Reques
       disconnected.abort();
     });
 
+    const chaos = chaosContextFrom(req);
+
     const sendLeg = (leg: LegOutcome): void => {
       const event: StreamLegEvent = { meta: leg.meta, options: leg.options };
       send(STREAM_EVENT.leg, event);
@@ -88,6 +91,7 @@ export function createSearchStreamHandler(service: SearchServiceOptions): Reques
         },
         onLeg: sendLeg,
         signal: disconnected.signal,
+        ...(chaos === undefined ? {} : { context: chaos }),
       });
 
       // A cache hit produced no legs to stream, so replay it as though it had.

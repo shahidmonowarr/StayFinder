@@ -302,6 +302,60 @@ describeDb("bookings", () => {
     });
   });
 
+  describe("GET /api/bookings", () => {
+    it("returns an empty list on a fresh database rather than erroring", async () => {
+      const res = await request(app()).get("/api/bookings").expect(200);
+
+      expect(res.body.bookings).toEqual([]);
+    });
+
+    it("lists recent bookings newest first", async () => {
+      for (const name of ["first", "second", "third"]) {
+        const quote = await seedQuote();
+        await request(app())
+          .post("/api/bookings")
+          .set("Idempotency-Key", `recent-${name}`)
+          .send({ quoteId: quote.id, ...GUEST })
+          .expect(201);
+      }
+
+      const res = await request(app()).get("/api/bookings").expect(200);
+
+      expect(res.body.bookings).toHaveLength(3);
+      const times = res.body.bookings.map((b: { createdAt: string }) => b.createdAt);
+      expect([...times].sort().reverse()).toEqual(times);
+    });
+
+    it("honours a limit", async () => {
+      for (const name of ["a", "b", "c"]) {
+        const quote = await seedQuote();
+        await request(app())
+          .post("/api/bookings")
+          .set("Idempotency-Key", `limit-${name}`)
+          .send({ quoteId: quote.id, ...GUEST })
+          .expect(201);
+      }
+
+      const res = await request(app()).get("/api/bookings?limit=2").expect(200);
+
+      expect(res.body.bookings).toHaveLength(2);
+    });
+
+    it("omits the guest email — the endpoint has no authentication", async () => {
+      const quote = await seedQuote();
+      await request(app())
+        .post("/api/bookings")
+        .set("Idempotency-Key", "redaction")
+        .send({ quoteId: quote.id, ...GUEST })
+        .expect(201);
+
+      const res = await request(app()).get("/api/bookings").expect(200);
+
+      expect(res.body.bookings[0].guestName).toBe("Ada Lovelace");
+      expect(res.body.bookings[0].guestEmail).toBeUndefined();
+    });
+  });
+
   describe("GET /api/bookings/:id", () => {
     it("returns the booking with its timeline", async () => {
       const quote = await seedQuote();

@@ -31,15 +31,22 @@ export interface UseSearchStreamOptions {
   baseUrl?: string;
   eventSourceFactory?: EventSourceFactory;
   slowAfterMs?: number;
+  /**
+   * Forced supplier behaviour. Part of the URL rather than a header because
+   * `EventSource` cannot set headers — and because being in the URL means a
+   * change to it re-runs the search, which is exactly what should happen.
+   */
+  chaos?: string;
 }
 
-export function searchStreamUrl(baseUrl: string, query: SearchQuery): string {
+export function searchStreamUrl(baseUrl: string, query: SearchQuery, chaos?: string): string {
   const params = new URLSearchParams({
     destination: query.destination,
     checkIn: query.checkIn,
     checkOut: query.checkOut,
     guests: String(query.guests),
   });
+  if (chaos !== undefined && chaos !== "") params.set("chaos", chaos);
   return `${baseUrl}/api/search/stream?${params.toString()}`;
 }
 
@@ -51,6 +58,7 @@ export function useSearchStream(
 
   const baseUrl = options.baseUrl ?? "";
   const slowAfterMs = options.slowAfterMs ?? SLOW_AFTER_MS;
+  const chaos = options.chaos;
 
   /**
    * The factory is held in a ref rather than listed as a dependency.
@@ -86,7 +94,7 @@ export function useSearchStream(
     dispatch({ type: "start" });
 
     const source = factoryRef.current(
-      searchStreamUrl(baseUrl, { destination, checkIn, checkOut, guests }),
+      searchStreamUrl(baseUrl, { destination, checkIn, checkOut, guests }, chaos),
     );
 
     let closed = false;
@@ -136,7 +144,7 @@ export function useSearchStream(
     };
     // Only values that genuinely define *which* search this is. Anything else
     // in here re-opens the stream and re-runs the fan-out.
-  }, [destination, checkIn, checkOut, guests, baseUrl, slowAfterMs]);
+  }, [destination, checkIn, checkOut, guests, baseUrl, slowAfterMs, chaos]);
 
   return state;
 }

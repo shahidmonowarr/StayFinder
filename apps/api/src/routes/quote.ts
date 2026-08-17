@@ -8,6 +8,7 @@ import {
 } from "../adapters/types";
 import { toQuoteView, type QuoteRepository, type QuoteView } from "../db/quotes";
 import { describeError } from "../errors";
+import { chaosContextFrom } from "./chaos";
 import { DEFAULT_TIMEOUT_MS } from "../orchestrator/fanout";
 
 /**
@@ -96,6 +97,7 @@ export function createQuoteHandler(options: QuoteRouteOptions): RequestHandler {
           guests: request.guests,
         },
         AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+        chaosContextFrom(req),
       );
     } catch (error) {
       if (error instanceof SupplierHotelNotFoundError) {

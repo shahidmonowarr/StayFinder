@@ -1,5 +1,6 @@
 import type { SearchResponse } from "@stayfinder/shared";
 import type { Request, RequestHandler, Response } from "express";
+import { chaosContextFrom } from "./chaos";
 import { runSearch, type SearchServiceOptions } from "./search-service";
 import { parseSearchRequest } from "./search-request";
 
@@ -16,7 +17,10 @@ export function createSearchHandler(service: SearchServiceOptions): RequestHandl
       return;
     }
 
-    const outcome = await runSearch(service, parsed.query);
+    const context = chaosContextFrom(req);
+    const outcome = await runSearch(service, parsed.query, {
+      ...(context === undefined ? {} : { context }),
+    });
 
     // Always 200, even when every supplier failed. A search that found nothing
     // because the suppliers are down is a successful search with an honest

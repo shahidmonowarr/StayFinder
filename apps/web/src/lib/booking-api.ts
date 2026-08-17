@@ -94,8 +94,10 @@ export async function requestQuote(
     guests: number;
     searchedTotalMinor: number;
   },
+  chaos?: string,
 ): Promise<QuoteResult> {
-  const response = await fetch(`${baseUrl}/api/quote`, {
+  const query = chaos === undefined || chaos === "" ? "" : `?chaos=${encodeURIComponent(chaos)}`;
+  const response = await fetch(`${baseUrl}/api/quote${query}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(input),

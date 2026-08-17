@@ -1,4 +1,5 @@
 import type { SearchQuery } from "@stayfinder/shared";
+import { RecentBookings, type RecentBooking } from "@/components/recent-bookings";
 import { SearchExperience } from "@/components/search-experience";
 
 /**
@@ -16,7 +17,21 @@ function isoDate(daysFromNow: number): string {
   return date.toISOString().slice(0, 10);
 }
 
-export default function HomePage() {
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+/** Never allowed to break the page: the search works with or without this list. */
+async function loadRecentBookings(): Promise<RecentBooking[]> {
+  try {
+    const response = await fetch(`${API_URL}/api/bookings?limit=6`, { cache: "no-store" });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { bookings?: RecentBooking[] };
+    return body.bookings ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export default async function HomePage() {
   const initialQuery: SearchQuery = {
     destination: "Lisbon",
     checkIn: isoDate(14),
@@ -24,7 +39,7 @@ export default function HomePage() {
     guests: 2,
   };
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+  const recent = await loadRecentBookings();
 
   return (
     <div>
@@ -38,8 +53,10 @@ export default function HomePage() {
       </p>
 
       <div className="mt-8">
-        <SearchExperience initialQuery={initialQuery} streamOptions={{ baseUrl: apiUrl }} />
+        <SearchExperience initialQuery={initialQuery} streamOptions={{ baseUrl: API_URL }} />
       </div>
+
+      <RecentBookings bookings={recent} />
     </div>
   );
 }

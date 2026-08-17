@@ -21,7 +21,15 @@ function Stars({ rating }: { rating: number }) {
  * not noise. The Grand Meridian is cheaper from one supplier and refundable
  * from another, and only the user can say which of those they want.
  */
-export function ResultCard({ group, apiUrl }: { group: PropertyGroup; apiUrl: string }) {
+export function ResultCard({
+  group,
+  apiUrl,
+  chaos,
+}: {
+  group: PropertyGroup;
+  apiUrl: string;
+  chaos?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   // Which offer is being quoted, if any. Held per card rather than globally so
   // two properties can be inspected without one closing the other.
@@ -90,7 +98,12 @@ export function ResultCard({ group, apiUrl }: { group: PropertyGroup; apiUrl: st
       )}
 
       {quoting !== null && (
-        <QuotePanel option={quoting} apiUrl={apiUrl} onClose={() => setQuoting(null)} />
+        <QuotePanel
+          option={quoting}
+          apiUrl={apiUrl}
+          chaos={chaos}
+          onClose={() => setQuoting(null)}
+        />
       )}
     </article>
   );

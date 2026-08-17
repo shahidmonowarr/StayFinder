@@ -12,6 +12,32 @@ import type { HotelOption, Money, SearchQuery, SupplierId } from "@stayfinder/sh
  * supplier should require a new file here and one line in the registry, and no
  * change to the orchestrator at all.
  */
+/**
+ * Per-request instructions that are not part of the search itself.
+ *
+ * Currently just chaos forcing, which only SupplierGamma understands. Adapters
+ * that have nothing to do with a given field ignore it — the context is
+ * advisory, never a contract every supplier must honour.
+ */
+export interface SupplierRequestContext {
+  /** `fail` | `drift` | `none`, forwarded verbatim to suppliers that support it. */
+  chaos?: ChaosMode;
+}
+
+/**
+ * What a visitor can force. Deliberately a closed set: an unrecognized value is
+ * ignored rather than passed through, so nothing arbitrary reaches a supplier.
+ */
+export type ChaosMode = "fail" | "drift" | "none";
+
+const CHAOS_MODES: readonly string[] = ["fail", "drift", "none"];
+
+export function parseChaosMode(value: unknown): ChaosMode | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return CHAOS_MODES.includes(normalized) ? (normalized as ChaosMode) : undefined;
+}
+
 export interface SupplierAdapter {
   readonly id: SupplierId;
   /**
@@ -19,7 +45,11 @@ export interface SupplierAdapter {
    * must pass it to `fetch` rather than merely checking it, so an abandoned
    * request is actually cancelled instead of left streaming into nothing.
    */
-  search(query: SearchQuery, signal: AbortSignal): Promise<AdapterResult>;
+  search(
+    query: SearchQuery,
+    signal: AbortSignal,
+    context?: SupplierRequestContext,
+  ): Promise<AdapterResult>;
   /**
    * Ask the supplier what one property costs right now.
    *
@@ -27,7 +57,11 @@ export interface SupplierAdapter {
    * actually cost" cannot be approximated, so a failure here propagates rather
    * than being absorbed into a status field.
    */
-  quote(request: QuoteRequest, signal: AbortSignal): Promise<SupplierQuote>;
+  quote(
+    request: QuoteRequest,
+    signal: AbortSignal,
+    context?: SupplierRequestContext,
+  ): Promise<SupplierQuote>;
 }
 
 export interface QuoteRequest {

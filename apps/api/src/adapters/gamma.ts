@@ -15,6 +15,7 @@ import {
   type QuoteRequest,
   type SupplierAdapter,
   type SupplierQuote,
+  type SupplierRequestContext,
 } from "./types";
 
 /**
@@ -242,15 +243,25 @@ export function normalizeGammaQuote(payload: unknown, supplierHotelId: string): 
   };
 }
 
+function chaosHeader(context: SupplierRequestContext | undefined): Record<string, string> {
+  return context?.chaos === undefined ? {} : { "x-chaos": context.chaos };
+}
+
 export function createGammaAdapter(baseUrl: string): SupplierAdapter {
   return {
     id: "gamma",
 
-    async search(query, signal) {
+    async search(query, signal, context) {
       const response = await fetch(new URL("/graphql", baseUrl), {
         method: "POST",
         signal,
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          // Gamma has honoured this since it was built. Forwarding it is what
+          // lets a visitor force the failure rather than wait for the 20% roll.
+          ...chaosHeader(context),
+        },
         body: JSON.stringify({
           query: SEARCH_QUERY,
           variables: {
@@ -274,11 +285,15 @@ export function createGammaAdapter(baseUrl: string): SupplierAdapter {
       return normalizeGamma(await response.json(), query);
     },
 
-    async quote(request: QuoteRequest, signal) {
+    async quote(request: QuoteRequest, signal, context) {
       const response = await fetch(new URL("/graphql", baseUrl), {
         method: "POST",
         signal,
-        headers: { "content-type": "application/json", accept: "application/json" },
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json",
+          ...chaosHeader(context),
+        },
         body: JSON.stringify({
           query: QUOTE_QUERY,
           variables: {

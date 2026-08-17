@@ -120,6 +120,20 @@ export interface CreateResult {
 export class BookingRepository {
   constructor(private readonly prisma: PrismaClient) {}
 
+  /**
+   * The most recent bookings, for the demo's "recent" list.
+   *
+   * Deliberately capped and ordered by creation: this is a navigational aid so a
+   * visitor who loses their link is not stuck, not a general-purpose query.
+   */
+  async recent(limit = 8): Promise<BookingWithQuote[]> {
+    return this.prisma.booking.findMany({
+      include: { quote: true },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(Math.max(limit, 1), 50),
+    });
+  }
+
   async find(id: string): Promise<BookingWithQuote | null> {
     return this.prisma.booking.findUnique({ where: { id }, include: { quote: true } });
   }

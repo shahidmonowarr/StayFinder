@@ -99,6 +99,27 @@ export function createBookingHandler(options: BookingRouteOptions): RequestHandl
   };
 }
 
+/**
+ * Recent bookings, so a visitor who navigates away can find theirs again.
+ *
+ * The guest's email is omitted. It is not needed to identify a booking in a list
+ * and this endpoint has no authentication — a demo is not a reason to publish
+ * addresses, even seeded ones.
+ */
+export function createListBookingsHandler(options: BookingRouteOptions): RequestHandler {
+  return async (req: Request, res: Response) => {
+    const limit = Number(req.query.limit ?? 8);
+    const bookings = await options.bookings.recent(Number.isFinite(limit) ? limit : 8);
+
+    res.json({
+      bookings: bookings.map((booking) => {
+        const { guestEmail: _guestEmail, ...rest } = toBookingView(booking);
+        return rest;
+      }),
+    });
+  };
+}
+
 export function createGetBookingHandler(options: BookingRouteOptions): RequestHandler {
   return async (req: Request, res: Response) => {
     const id = String(req.params.id ?? "");

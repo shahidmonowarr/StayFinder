@@ -57,10 +57,13 @@ function PriceChangeNotice({ result }: { result: QuoteResult }) {
 export function QuotePanel({
   option,
   apiUrl,
+  chaos,
   onClose,
 }: {
   option: HotelOption;
   apiUrl: string;
+  /** Forced supplier behaviour, so "move the price" reaches the re-quote. */
+  chaos?: string;
   onClose: () => void;
 }) {
   const [phase, setPhase] = useState<Phase>({ step: "idle" });
@@ -70,15 +73,19 @@ export function QuotePanel({
   async function getQuote() {
     setPhase({ step: "quoting" });
     try {
-      const result = await requestQuote(apiUrl, {
-        optionId: option.id,
-        checkIn: option.checkIn,
-        checkOut: option.checkOut,
-        guests: option.guests,
-        // What this card is displaying. The server compares against it, and
-        // charges its own number regardless.
-        searchedTotalMinor: option.totalPrice.amountMinor,
-      });
+      const result = await requestQuote(
+        apiUrl,
+        {
+          optionId: option.id,
+          checkIn: option.checkIn,
+          checkOut: option.checkOut,
+          guests: option.guests,
+          // What this card is displaying. The server compares against it, and
+          // charges its own number regardless.
+          searchedTotalMinor: option.totalPrice.amountMinor,
+        },
+        chaos,
+      );
       setPhase({ step: "quoted", result });
     } catch (error) {
       setPhase(describeFailure(error));

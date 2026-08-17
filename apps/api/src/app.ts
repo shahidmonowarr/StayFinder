@@ -10,7 +10,11 @@ import { QuoteRepository } from "./db/quotes";
 import { env } from "./env";
 import { FakePaymentProvider } from "./payments/fake";
 import type { PaymentProvider } from "./payments/types";
-import { createBookingHandler, createGetBookingHandler } from "./routes/bookings";
+import {
+  createBookingHandler,
+  createGetBookingHandler,
+  createListBookingsHandler,
+} from "./routes/bookings";
 import {
   createCancelHandler,
   createDevEventHandler,
@@ -113,6 +117,7 @@ export function createApp(options: AppOptions = {}): Express {
       }),
     );
     app.post("/api/bookings", createBookingHandler({ quotes, bookings }));
+    app.get("/api/bookings", createListBookingsHandler({ quotes, bookings }));
     app.get("/api/bookings/:id", createGetBookingHandler({ quotes, bookings, ledger }));
 
     app.post("/api/bookings/:id/payment-intent", createPaymentIntentHandler(payments));

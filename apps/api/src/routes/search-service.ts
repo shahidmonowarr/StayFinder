@@ -1,5 +1,5 @@
 import type { SearchQuery, SupplierMeta } from "@stayfinder/shared";
-import type { SupplierAdapter } from "../adapters/types";
+import type { SupplierAdapter, SupplierRequestContext } from "../adapters/types";
 import { cacheKeyFor, isCacheable, type CachedSearch, type SearchCache } from "../cache";
 import { fanOut, type LegOutcome } from "../orchestrator/fanout";
 
@@ -34,6 +34,8 @@ export interface RunSearchOptions {
   onLeg?: (leg: LegOutcome) => void;
   /** Cancels in-flight legs when the client disconnects. */
   signal?: AbortSignal;
+  /** Per-request supplier instructions, e.g. forced chaos. */
+  context?: SupplierRequestContext;
 }
 
 export async function runSearch(
@@ -44,7 +46,12 @@ export async function runSearch(
   const startedAt = performance.now();
   const key = cacheKeyFor(query);
 
-  const hit = await service.cache.get(key);
+  // Chaos runs bypass the cache in both directions. A forced failure is not a
+  // result worth serving to the next visitor, and reading a cached clean result
+  // would make "break SupplierGamma" appear to do nothing.
+  const chaotic = options.context?.chaos !== undefined;
+
+  const hit = chaotic ? undefined : await service.cache.get(key);
   options.onCacheResult?.(hit !== undefined);
 
   if (hit !== undefined) {
@@ -55,9 +62,10 @@ export async function runSearch(
     ...(service.timeoutMs === undefined ? {} : { timeoutMs: service.timeoutMs }),
     ...(options.onLeg === undefined ? {} : { onLeg: options.onLeg }),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
+    ...(options.context === undefined ? {} : { context: options.context }),
   });
 
-  if (isCacheable(result.suppliers)) {
+  if (!chaotic && isCacheable(result.suppliers)) {
     await service.cache.set(key, { options: result.options, suppliers: result.suppliers });
   }
 

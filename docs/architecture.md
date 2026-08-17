@@ -638,6 +638,34 @@ API. That gap closes with `STRIPE_SECRET_KEY` in `.env` and
 
 ---
 
+## Chaos mode
+
+Every control on the demo page forces a real code path. `Break SupplierGamma`
+sends `chaos=fail` to the aggregator, which forwards it to the actual Gamma
+process, which actually returns a 500, which the actual fan-out actually
+isolates. A mocked failure would be a screenshot with extra steps.
+
+The setting travels as a **query parameter**, not a header, and that is a
+constraint rather than a preference: the search stream is consumed with
+`EventSource`, which cannot set custom headers at all. Having it arrive one way
+on the stream and another way everywhere else would be worse than picking the one
+that works for both. The `x-chaos` header is still accepted so the same forcing
+works from `curl`.
+
+Chaos is **per request**. A server-side flag would be shared mutable state: two
+visitors would fight over it, and one person's setting would outlive them.
+
+Chaos runs bypass the search cache in both directions. Reading from it would make
+"break SupplierGamma" appear to do nothing for the next sixty seconds after any
+ordinary search; writing to it would serve a deliberately broken result to
+somebody who never asked for one.
+
+Only Gamma receives the header — Alpha and Beta have nothing to force — and an
+unrecognized value is dropped rather than relayed, so nothing arbitrary from a
+URL reaches a supplier.
+
+---
+
 ## Repository layout
 
 ```

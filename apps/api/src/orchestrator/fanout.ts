@@ -4,7 +4,7 @@ import {
   type SearchQuery,
   type SupplierMeta,
 } from "@stayfinder/shared";
-import type { SupplierAdapter } from "../adapters/types";
+import type { SupplierAdapter, SupplierRequestContext } from "../adapters/types";
 import { describeError } from "../errors";
 
 /**
@@ -44,6 +44,8 @@ export interface FanOutOptions {
    * open is pure waste.
    */
   signal?: AbortSignal;
+  /** Per-request instructions passed to each adapter. Only Gamma acts on it. */
+  context?: SupplierRequestContext;
 }
 
 export interface FanOutResult {
@@ -83,6 +85,7 @@ interface LegContext {
   /** The caller's cancellation, if any — combined with, not replacing, the deadline. */
   external: AbortSignal | undefined;
   onLeg: ((leg: LegOutcome) => void) | undefined;
+  supplierContext: SupplierRequestContext | undefined;
 }
 
 async function runLeg(adapter: SupplierAdapter, context: LegContext): Promise<LegOutcome> {
@@ -105,10 +108,10 @@ async function settle(
   adapter: SupplierAdapter,
   signal: AbortSignal,
   startedAt: number,
-  { query, now }: LegContext,
+  { query, now, supplierContext }: LegContext,
 ): Promise<LegOutcome> {
   try {
-    const result = await adapter.search(query, signal);
+    const result = await adapter.search(query, signal, supplierContext);
     return {
       options: result.options,
       meta: {
@@ -148,6 +151,7 @@ export async function fanOut(
     now: options.now ?? (() => performance.now()),
     external: options.signal,
     onLeg: options.onLeg,
+    supplierContext: options.context,
   };
 
   // All legs are dispatched before any is awaited, so the deadlines run
