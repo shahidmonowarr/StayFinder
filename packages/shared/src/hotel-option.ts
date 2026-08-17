@@ -22,6 +22,13 @@ export interface SupplierMeta {
   latencyMs: number;
   /** Options contributed after normalization. Zero for timeout/error. */
   resultCount: number;
+  /**
+   * Rows the supplier returned that could not be normalized and were skipped.
+   * Non-zero with `status: "ok"` means the supplier partly answered — visible
+   * rather than silent, because a supplier quietly shedding half its inventory
+   * is a bug worth noticing.
+   */
+  droppedCount: number;
   /** Operator-facing reason, present only when status is not "ok". */
   message?: string;
 }

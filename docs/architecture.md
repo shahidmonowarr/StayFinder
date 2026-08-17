@@ -213,7 +213,7 @@ response it cannot parse at all.
 
 ---
 
-## Fan-out and isolation _(planned — M3)_
+## Fan-out and isolation
 
 `/api/search` dispatches to all three suppliers concurrently with a hard
 1500ms per-supplier deadline. A supplier that fails or times out contributes a
@@ -225,6 +225,105 @@ healthy, an error is one that answered wrongly.
 Per-supplier status is part of the response contract, not a debug extra: a
 response is still valid when a supplier is missing, and the UI has to be able
 to say so honestly rather than implying the results are complete.
+
+### The layering
+
+```
+route          validates the query, shapes the response
+  └─ fanout    runs N legs concurrently, applies deadlines, classifies outcomes
+       └─ adapter × 3   speaks one supplier's protocol, returns HotelOption
+```
+
+[`fanout.ts`](../apps/api/src/orchestrator/fanout.ts) knows nothing about HTTP,
+hotels, or which suppliers exist — it takes adapters as an argument. That is
+what makes deadlines, isolation, and classification testable without a network,
+and it means adding a fourth supplier is a new file in
+[`adapters/`](../apps/api/src/adapters) plus one line in the registry.
+
+### Deadlines abort; they do not merely stop waiting
+
+The deadline is `AbortSignal.timeout(1500)` passed into `fetch`, not a
+`Promise.race` against a timer. Racing a timer _looks_ equivalent and is not:
+the losing request stays open, its body keeps streaming into a handler nobody
+is listening to, and the socket leaks. Under load that is the difference
+between a slow supplier and an exhausted connection pool.
+
+Each leg gets its own signal. A shared one would mean the first supplier to
+time out cancels the two that were about to succeed.
+
+All legs are dispatched before any is awaited, so the deadlines run
+concurrently: worst-case wall clock is **one** timeout plus normalization, not
+three.
+
+### Always HTTP 200
+
+A search where every supplier fell over is still a successful search. Nothing
+is wrong on our side, so the response is a 200 with an empty `options` array
+and a status block that says exactly what happened. Returning a 5xx would tell
+the client to retry a request that will fail identically, and would make
+"one supplier is down" indistinguishable from "the aggregator is broken".
+
+### Partial failure inside a healthy supplier
+
+Normalization runs per row. A single unparseable rate — a bad currency code, a
+price `Money` refuses — drops that row and increments `droppedCount` on the
+supplier's metadata, leaving the rest of its inventory intact and its status
+`ok`. Failing the whole leg over one malformed record would throw away good
+inventory; hiding the drop would let a supplier silently shed half its stock.
+Only when the envelope itself is unreadable does the leg become `error`.
+
+### Observed behaviour
+
+Eight consecutive live searches against the real suppliers, no chaos forcing:
+
+```
+7 options  alpha:ok(123ms,3)  beta:ok(935ms,2)      gamma:ok(329ms,2)
+5 options  alpha:ok(104ms,3)  beta:ok(1460ms,2)     gamma:error(306ms,0)
+7 options  alpha:ok(105ms,3)  beta:ok(1298ms,2)     gamma:ok(308ms,2)
+7 options  alpha:ok(103ms,3)  beta:ok(1324ms,2)     gamma:ok(308ms,2)
+5 options  alpha:ok(103ms,3)  beta:timeout(1505ms,0) gamma:ok(308ms,2)
+7 options  alpha:ok(103ms,3)  beta:ok(1141ms,2)     gamma:ok(309ms,2)
+```
+
+All three statuses occur without being staged, and every request returned 200.
+Note Beta at 1460ms on the second row and 1505ms on the fifth: the deadline sits
+inside its latency distribution on purpose, so the timeout path is ordinary
+rather than exotic.
+
+Killing SupplierAlpha's process outright:
+
+```
+alpha  error       16ms  fetch failed: connect ECONNREFUSED ::1:4001
+beta   ok         961ms
+gamma  ok         320ms
+-> HTTP 200, 5 options from the survivors
+```
+
+That message is unwrapped deliberately. Node reports every transport failure as
+`TypeError: fetch failed` and buries the reason in `cause` — and when the host is
+`localhost` rather than a literal IP, `cause` is an `AggregateError` whose own
+message is the empty string, because the name resolves to both `::1` and
+`127.0.0.1` and undici attempts both. Reading `.message` on that yields nothing,
+so a dead supplier and a DNS failure look identical in the status strip. Both
+shapes are handled in
+[`fanout.ts`](../apps/api/src/orchestrator/fanout.ts).
+
+### Merging
+
+Every supplier's offer survives into `options[]` with `dedupeKey` populated;
+`groupByProperty` (in `packages/shared`, so the UI can use it too) collapses
+them for display. A live Lisbon search returns 7 offers across 4 buildings:
+
+| Property            | Offers                                  | Cheapest  |
+| ------------------- | --------------------------------------- | --------- |
+| Grand Meridian      | alpha 389.70, beta 375.00, gamma 405.00 | **beta**  |
+| Casa do Tejo        | alpha 253.50, gamma 243.00              | **gamma** |
+| Alfama Boutique     | alpha 183.00                            | alpha     |
+| Hotel Baixa Central | beta 162.00                             | beta      |
+
+Beta — the slowest supplier — holds the best price on the property all three
+sell. That is the case that makes progressive streaming interesting rather than
+merely faster: the cheapest result is the last to arrive.
 
 ## Progressive delivery and caching _(planned — M4)_
 

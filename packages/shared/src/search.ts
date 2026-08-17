@@ -1,5 +1,21 @@
 import type { HotelOption, SupplierMeta } from "./hotel-option";
 
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * Nights in a stay. `checkOut` is exclusive — the checkout day is not a night —
+ * so a 01→04 stay is three nights.
+ *
+ * Dates are parsed at UTC midnight rather than local time. A local-time parse
+ * would make the night count depend on the server's timezone and on daylight
+ * saving, which is how off-by-one-night pricing bugs happen.
+ */
+export function nightsBetween(checkIn: string, checkOut: string): number {
+  const from = Date.parse(`${checkIn}T00:00:00Z`);
+  const to = Date.parse(`${checkOut}T00:00:00Z`);
+  return Math.round((to - from) / MS_PER_DAY);
+}
+
 /** The user's request. Cache keys are derived from exactly these fields. */
 export interface SearchQuery {
   destination: string;

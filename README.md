@@ -100,6 +100,47 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:4003/graphql -H 'content-type
 
 ---
 
+## Now watch the aggregator absorb it
+
+```bash
+curl -s "localhost:4000/api/search?destination=Lisbon&checkIn=2026-09-01&checkOut=2026-09-04&guests=2" | jq '{count: (.options|length), suppliers: [.suppliers[] | "\(.supplier):\(.status) \(.latencyMs)ms ×\(.resultCount)"]}'
+```
+
+Run it a few times. Eight consecutive live searches, nothing staged:
+
+```
+7 options  alpha:ok(123ms,3)  beta:ok(935ms,2)       gamma:ok(329ms,2)
+5 options  alpha:ok(104ms,3)  beta:ok(1460ms,2)      gamma:error(306ms,0)
+7 options  alpha:ok(105ms,3)  beta:ok(1298ms,2)      gamma:ok(308ms,2)
+5 options  alpha:ok(103ms,3)  beta:timeout(1505ms,0) gamma:ok(308ms,2)
+```
+
+Every one of those returned **HTTP 200**. A supplier that times out or 500s
+contributes a status and zero options; it cannot fail the request, and it cannot
+delay the suppliers that are healthy.
+
+Take a supplier away entirely and search again:
+
+```bash
+kill $(lsof -ti tcp:4001 -sTCP:LISTEN)
+```
+
+```
+alpha  error       16ms  fetch failed: connect ECONNREFUSED ::1:4001
+beta   ok         961ms
+gamma  ok         320ms
+-> HTTP 200, 5 options from the survivors
+```
+
+The `-sTCP:LISTEN` matters: without it `lsof` also lists the API's _client_
+socket to port 4001 and you may kill the aggregator instead of the supplier.
+
+The seven options collapse into four buildings. Beta — the slowest supplier —
+holds the best price on the one all three sell, which is exactly why M4 streams
+results instead of sorting once at the end.
+
+---
+
 ## Design decisions
 
 **Why a 1500ms per-supplier timeout.** Beta's latency ranges to 2000ms, so the
@@ -145,7 +186,7 @@ does the right thing under duplicate webhooks and races.
 
 - [x] **M1** — monorepo scaffold, shared model, CI
 - [x] **M2** — three mock suppliers + seeded inventory
-- [ ] **M3** — `/api/search` fan-out, timeouts, normalization
+- [x] **M3** — `/api/search` fan-out, timeouts, normalization
 - [ ] **M4** — SSE streaming, Redis cache, supplier-status UI
 - [ ] **M5** — quote revalidation, booking state machine, tests
 - [ ] **M6** — Stripe webhooks, idempotency, append-only ledger
