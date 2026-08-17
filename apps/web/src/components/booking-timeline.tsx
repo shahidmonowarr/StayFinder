@@ -40,7 +40,9 @@ export function BookingTimeline({
 }) {
   return (
     <div>
-      <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">State timeline</h2>
+      <h2 className="font-mono text-[10px] font-semibold tracking-[0.11em] text-muted uppercase">
+        State timeline
+      </h2>
 
       <ol className="mt-3 space-y-3">
         {events.map((event, index) => (
@@ -49,14 +51,14 @@ export function BookingTimeline({
               aria-hidden="true"
               className={`mt-1.5 size-2 shrink-0 rounded-full ${TONE[event.to]}`}
             />
-            <div className="text-sm">
+            <div className="text-[13px]">
               <p className="font-medium">
                 {event.to}
                 {event.transition !== null && (
                   <span className="ml-2 font-normal text-muted">via {event.transition}</span>
                 )}
               </p>
-              <p className="text-xs text-muted">
+              <p className="font-mono text-[10.5px] text-muted">
                 {DESCRIPTION[event.to]} · {new Date(event.at).toLocaleString()}
               </p>
             </div>
@@ -64,7 +66,7 @@ export function BookingTimeline({
         ))}
       </ol>
 
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-4 text-[11.5px] leading-relaxed text-muted">
         {isTerminal(status) ? (
           <>This booking is in a terminal state — nothing further can happen to it.</>
         ) : (
@@ -82,8 +84,10 @@ export function BookingTimeline({
 export function StateMachineLegend({ status }: { status: BookingStatus }) {
   return (
     <div>
-      <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">The machine</h2>
-      <ul className="mt-3 space-y-1.5 text-xs">
+      <h2 className="font-mono text-[10px] font-semibold tracking-[0.11em] text-muted uppercase">
+        The machine
+      </h2>
+      <ul className="mt-3 space-y-1.5 font-mono text-[11px]">
         {BOOKING_STATUSES.map((candidate) => (
           <li
             key={candidate}

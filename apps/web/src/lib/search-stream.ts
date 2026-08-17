@@ -38,6 +38,12 @@ export interface SearchStreamState {
   options: HotelOption[];
   suppliers: SupplierProgress[];
   elapsedMs: number | null;
+  /**
+   * When this search began, on the client's clock. Carried in the action
+   * rather than read here, so the reducer stays pure — and it is what lets the
+   * trace draw a *growing* bar for a supplier that has not answered yet.
+   */
+  startedAt: number | null;
   /** Set when the stream itself broke, as opposed to a supplier failing. */
   error: string | null;
 }
@@ -48,11 +54,12 @@ export const initialSearchStreamState: SearchStreamState = {
   options: [],
   suppliers: [],
   elapsedMs: null,
+  startedAt: null,
   error: null,
 };
 
 export type SearchStreamAction =
-  | { type: "start" }
+  | { type: "start"; at: number }
   | { type: typeof STREAM_EVENT.meta; event: StreamMetaEvent }
   | { type: typeof STREAM_EVENT.leg; event: StreamLegEvent }
   | { type: typeof STREAM_EVENT.done; event: StreamDoneEvent }
@@ -67,7 +74,7 @@ export function searchStreamReducer(
     case "start":
       // A new search discards the old results outright. Keeping them while the
       // next set streams in would show prices for a stay nobody asked about.
-      return { ...initialSearchStreamState, phase: "streaming" };
+      return { ...initialSearchStreamState, phase: "streaming", startedAt: action.at };
 
     case STREAM_EVENT.meta:
       return {

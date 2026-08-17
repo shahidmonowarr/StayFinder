@@ -1,9 +1,7 @@
 import { dedupeKeyFor, fromMinor, type HotelOption, type SupplierId } from "@stayfinder/shared";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { SupplierProgress } from "@/lib/search-stream";
 import { ResultsList } from "./results-list";
-import { SupplierStatusStrip } from "./supplier-status-strip";
 
 function option(
   supplier: SupplierId,
@@ -28,102 +26,6 @@ function option(
     dedupeKey: dedupeKeyFor({ name, city: "Lisbon" }),
   };
 }
-
-function progress(
-  supplier: SupplierId,
-  state: SupplierProgress["state"],
-  meta?: Partial<{ latencyMs: number; resultCount: number; droppedCount: number }>,
-): SupplierProgress {
-  if (meta === undefined) return { supplier, state };
-  return {
-    supplier,
-    state,
-    meta: {
-      supplier,
-      status: state === "ok" ? "ok" : state === "timeout" ? "timeout" : "error",
-      latencyMs: meta.latencyMs ?? 100,
-      resultCount: meta.resultCount ?? 0,
-      droppedCount: meta.droppedCount ?? 0,
-    },
-  };
-}
-
-describe("SupplierStatusStrip", () => {
-  it("renders nothing before the stream has announced any suppliers", () => {
-    const { container } = render(
-      <SupplierStatusStrip suppliers={[]} cached={false} elapsedMs={null} />,
-    );
-
-    expect(container.firstChild).toBeNull();
-  });
-
-  it("shows every supplier as waiting up front", () => {
-    render(
-      <SupplierStatusStrip
-        suppliers={[progress("alpha", "pending"), progress("beta", "pending")]}
-        cached={false}
-        elapsedMs={null}
-      />,
-    );
-
-    expect(screen.getByTestId("supplier-alpha-detail").textContent).toBe("waiting");
-    expect(screen.getByTestId("supplier-beta-detail").textContent).toBe("waiting");
-  });
-
-  it("reports latency and rate count for a supplier that answered", () => {
-    render(
-      <SupplierStatusStrip
-        suppliers={[progress("alpha", "ok", { latencyMs: 103, resultCount: 3 })]}
-        cached={false}
-        elapsedMs={1400}
-      />,
-    );
-
-    expect(screen.getByTestId("supplier-alpha-detail").textContent).toBe("103ms · 3 rates");
-  });
-
-  it("surfaces dropped rows, so partial success is visible rather than silent", () => {
-    render(
-      <SupplierStatusStrip
-        suppliers={[progress("alpha", "ok", { latencyMs: 90, resultCount: 2, droppedCount: 1 })]}
-        cached={false}
-        elapsedMs={null}
-      />,
-    );
-
-    expect(screen.getByTestId("supplier-alpha-detail").textContent).toBe(
-      "90ms · 2 rates, 1 dropped",
-    );
-  });
-
-  it("distinguishes a timeout from a failure", () => {
-    render(
-      <SupplierStatusStrip
-        suppliers={[
-          progress("beta", "timeout", { latencyMs: 1505 }),
-          progress("gamma", "error", { latencyMs: 306 }),
-        ]}
-        cached={false}
-        elapsedMs={1510}
-      />,
-    );
-
-    expect(screen.getByTestId("supplier-beta-detail").textContent).toBe("timed out after 1505ms");
-    expect(screen.getByTestId("supplier-gamma-detail").textContent).toBe("failed after 306ms");
-  });
-
-  it("says when a response came from cache instead of showing a fake timing", () => {
-    render(
-      <SupplierStatusStrip
-        suppliers={[progress("alpha", "ok", { latencyMs: 103, resultCount: 3 })]}
-        cached
-        elapsedMs={1}
-      />,
-    );
-
-    expect(screen.getByText("served from cache")).toBeDefined();
-  });
-});
 
 describe("ResultsList", () => {
   it("shows skeletons while waiting with nothing yet", () => {
@@ -154,7 +56,10 @@ describe("ResultsList", () => {
     expect(screen.getAllByRole("heading", { level: 3 })).toHaveLength(1);
   });
 
-  it("headlines the cheapest offer and keeps the others reachable", () => {
+  it("shows every supplier's offer without anything to click", () => {
+    // The previous design hid these behind an "Also from N other suppliers"
+    // toggle — so the most interesting fact in the product was the one you had
+    // to go looking for. Both prices are now visible on arrival.
     render(
       <ResultsList
         options={[
@@ -165,14 +70,28 @@ describe("ResultsList", () => {
       />,
     );
 
-    // Gamma is cheaper but non-refundable; both facts have to be visible.
-    expect(screen.getByText("€370.00")).toBeDefined();
-    expect(screen.getByText("Non-refundable")).toBeDefined();
+    expect(screen.getByTestId("offer-alpha").textContent).toContain("€389.70");
+    expect(screen.getByTestId("offer-gamma").textContent).toContain("€370.00");
+    expect(screen.queryByRole("button", { name: /Also from/ })).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: /Also from 1 other supplier/ }));
+  it("marks the cheapest offer and flags the ones that are non-refundable", () => {
+    render(
+      <ResultsList
+        options={[
+          option("alpha", "Grand Meridian Lisbon", 38970, true),
+          option("gamma", "GRAND MERIDIAN LISBON", 37000, false),
+        ]}
+        waiting={false}
+      />,
+    );
 
-    expect(screen.getByText("€389.70")).toBeDefined();
-    expect(screen.getByText("refundable")).toBeDefined();
+    // Gamma is cheaper but non-refundable; both facts have to be readable at once.
+    expect(screen.getByTestId("offer-gamma").textContent).toContain("nr");
+    expect(screen.getByTestId("offer-alpha").textContent).not.toContain("nr");
+    // Twice: once in Gamma's chip, once as the headline. The headline price is
+    // the cheapest offer, so those are necessarily the same figure.
+    expect(screen.getAllByText("€370.00")).toHaveLength(2);
   });
 
   it("never shouts a property name back at the user", () => {

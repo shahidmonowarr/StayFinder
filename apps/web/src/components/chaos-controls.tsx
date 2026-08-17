@@ -45,9 +45,11 @@ export function ChaosControls({
   const active = OPTIONS.find((option) => option.mode === mode) ?? OPTIONS[0]!;
 
   return (
-    <section aria-label="Chaos mode" className="rounded border border-line bg-white p-3">
+    <section aria-label="Chaos mode" className="rounded border border-line bg-card px-4 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold tracking-wide text-muted uppercase">Chaos mode</span>
+        <span className="font-mono text-[10px] font-semibold tracking-[0.11em] text-muted uppercase">
+          Chaos mode
+        </span>
 
         <div className="flex flex-wrap gap-1" role="group" aria-label="Chaos mode">
           {OPTIONS.map((option) => (
@@ -56,10 +58,10 @@ export function ChaosControls({
               type="button"
               aria-pressed={mode === option.mode}
               onClick={() => onChange(option.mode)}
-              className={`rounded border px-2 py-1 text-xs transition-colors ${
+              className={`rounded-[3px] border px-2.5 py-1 text-[12px] transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${
                 mode === option.mode
                   ? "border-ink bg-ink text-white"
-                  : "border-line hover:border-accent"
+                  : "border-line bg-card hover:border-accent"
               }`}
             >
               {option.label}
@@ -68,7 +70,7 @@ export function ChaosControls({
         </div>
       </div>
 
-      <p className="mt-2 text-xs text-muted">{active.explains}</p>
+      <p className="mt-2 text-[12px] leading-relaxed text-muted">{active.explains}</p>
     </section>
   );
 }

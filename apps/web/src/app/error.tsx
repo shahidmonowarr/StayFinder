@@ -14,13 +14,15 @@ export default function ErrorPage({
 }) {
   return (
     <div className="max-w-lg py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">Something broke</h1>
-      <p className="mt-3 text-sm leading-relaxed text-muted">
+      <h1 className="text-[24px] font-semibold tracking-tight">Something broke</h1>
+      <p className="mt-3 text-[13.5px] leading-relaxed text-muted">
         This one is not a simulated failure. The most likely cause is that the API on port 4000 is
         not running — the page needs it for everything.
       </p>
-      <p className="mt-3 font-mono text-xs text-muted">{error.message}</p>
-      <div className="mt-6 flex gap-4 text-sm">
+      <p className="mt-3 rounded border border-line bg-card px-3 py-2 font-mono text-[11.5px] text-muted">
+        {error.message}
+      </p>
+      <div className="mt-6 flex gap-4 text-[13.5px]">
         <button type="button" onClick={reset} className="text-accent underline underline-offset-2">
           Try again
         </button>

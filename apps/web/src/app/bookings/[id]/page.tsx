@@ -42,46 +42,51 @@ export default async function BookingPage({ params }: { params: Promise<{ id: st
   const { booking, events, transactions } = data;
 
   return (
-    <div className="max-w-2xl">
-      <a href="/" className="text-xs text-muted underline">
+    <div className="max-w-4xl">
+      <a
+        href="/"
+        className="font-mono text-[11px] text-muted underline underline-offset-2 hover:text-accent"
+      >
         ← Back to search
       </a>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight">{booking.hotelName}</h1>
-      <p className="mt-1 text-sm text-muted">
+      <h1 className="mt-4 text-[24px] font-semibold tracking-tight">{booking.hotelName}</h1>
+      <p className="mt-1 text-[12.5px] text-muted">
         {booking.city} · {booking.checkIn} → {booking.checkOut} · {booking.nights} nights ·{" "}
         {booking.guests} guests
       </p>
 
-      <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-line py-4 text-sm">
+      <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-3 rounded border border-line bg-card px-4 py-4 text-[13px] sm:grid-cols-4">
         <div>
-          <dt className="text-xs text-muted">Status</dt>
+          <dt className="font-mono text-[10px] tracking-[0.09em] text-muted uppercase">Status</dt>
           <dd className="font-medium">{booking.status}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted">Total</dt>
-          <dd className="font-medium tabular-nums">{formatMoney(booking.total)}</dd>
+          <dt className="font-mono text-[10px] tracking-[0.09em] text-muted uppercase">Total</dt>
+          <dd className="font-mono font-medium tabular-nums">{formatMoney(booking.total)}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted">Guest</dt>
+          <dt className="font-mono text-[10px] tracking-[0.09em] text-muted uppercase">Guest</dt>
           <dd>{booking.guestName}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted">Reference</dt>
-          <dd className="font-mono text-xs">{booking.id}</dd>
+          <dt className="font-mono text-[10px] tracking-[0.09em] text-muted uppercase">
+            Reference
+          </dt>
+          <dd className="font-mono text-[11px] break-all">{booking.id}</dd>
         </div>
       </dl>
 
-      <div className="mt-8 grid gap-10 sm:grid-cols-2">
+      <div className="mt-8 grid gap-8 sm:grid-cols-2">
         <BookingTimeline events={events} status={booking.status} />
         <StateMachineLegend status={booking.status} />
       </div>
 
-      <div className="mt-10">
+      <div className="mt-8">
         <LedgerTable entries={transactions} currency={booking.total.currency} />
       </div>
 
-      <div className="mt-10">
+      <div className="mt-8">
         <PaymentPanel
           bookingId={booking.id}
           status={booking.status}

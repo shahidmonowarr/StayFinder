@@ -5,22 +5,43 @@ import { useState } from "react";
 import { pickDisplayName } from "@/lib/display-name";
 import { QuotePanel } from "./quote-panel";
 
+/**
+ * One physical property and every offer for it.
+ *
+ * The offers are shown inline rather than behind a disclosure. Three suppliers
+ * selling the same building at three prices is the single most interesting fact
+ * this product surfaces, and the previous design had it collapsed by default —
+ * so the thing worth looking at was the thing you had to go looking for.
+ */
+
 function Stars({ rating }: { rating: number }) {
-  if (rating === 0) return <span className="text-xs text-muted">unrated</span>;
+  if (rating === 0) {
+    return <span className="font-mono text-[10px] text-muted">unrated</span>;
+  }
   return (
-    <span className="text-xs text-muted" aria-label={`${rating} star`}>
+    <span className="text-[10px] text-muted" aria-label={`${rating} star`}>
       {"★".repeat(rating)}
     </span>
   );
 }
 
-/**
- * One physical property, however many suppliers sell it.
- *
- * The headline is the cheapest offer, but the others stay reachable — they are
- * not noise. The Grand Meridian is cheaper from one supplier and refundable
- * from another, and only the user can say which of those they want.
- */
+/** One supplier's price. The cheapest is marked; the rest stay legible, not greyed to death. */
+function Offer({ offer, best }: { offer: HotelOption; best: boolean }) {
+  return (
+    <span
+      data-testid={`offer-${offer.supplier}`}
+      className={`inline-flex items-baseline gap-1.5 rounded-[3px] border px-1.5 py-0.5 font-mono text-[11px] tabular-nums ${
+        best ? "border-ok bg-ok/10 font-medium text-ok" : "border-line bg-card text-muted"
+      }`}
+      title={offer.refundable ? "Free cancellation" : "Non-refundable"}
+    >
+      <span>{offer.supplier}</span>
+      <span className={best ? "" : "text-ink"}>{formatMoney(offer.totalPrice)}</span>
+      {!offer.refundable && <span aria-label="non-refundable">·nr</span>}
+    </span>
+  );
+}
+
 export function ResultCard({
   group,
   apiUrl,
@@ -30,80 +51,57 @@ export function ResultCard({
   apiUrl: string;
   chaos?: string;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  // Which offer is being quoted, if any. Held per card rather than globally so
-  // two properties can be inspected without one closing the other.
   const [quoting, setQuoting] = useState<HotelOption | null>(null);
   const { best, offers } = group;
-  const alternatives = offers.length - 1;
 
   return (
-    <article className="border-b border-line py-5">
-      <div className="flex items-baseline justify-between gap-4">
-        <div>
-          <h3 className="font-medium">{pickDisplayName(offers)}</h3>
-          <p className="mt-1 flex items-center gap-2 text-xs text-muted">
+    <article className="border-b border-hair last:border-b-0">
+      <div className="grid grid-cols-[1fr_auto] items-start gap-4 px-4 py-3.5 sm:grid-cols-[1fr_250px_150px]">
+        <div className="col-span-2 sm:col-span-1">
+          <h3 className="text-[15px] font-medium">{pickDisplayName(offers)}</h3>
+          <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11.5px] text-muted">
             <span>{best.city}</span>
             <span aria-hidden="true">·</span>
             <Stars rating={best.starRating} />
+            <span aria-hidden="true">·</span>
+            <span>{best.refundable ? "free cancellation" : "non-refundable"}</span>
           </p>
         </div>
 
-        <div className="shrink-0 text-right">
-          <p className="font-medium tabular-nums">{formatMoney(best.totalPrice)}</p>
-          <p className="text-xs text-muted tabular-nums">
-            {formatMoney(best.nightlyRate)} × {best.nights} nights
-          </p>
+        <div className="col-span-2 flex flex-wrap gap-1.5 self-center sm:col-span-1">
+          {offers.map((offer) => (
+            <Offer key={offer.id} offer={offer} best={offer.id === best.id} />
+          ))}
         </div>
-      </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <span className="rounded border border-line px-1.5 py-0.5 capitalize">{best.supplier}</span>
-        <span className={best.refundable ? "text-ok" : "text-muted"}>
-          {best.refundable ? "Free cancellation" : "Non-refundable"}
-        </span>
-
-        <button
-          type="button"
-          onClick={() => setQuoting(quoting === null ? best : null)}
-          className="ml-auto rounded border border-line px-2 py-0.5 hover:border-accent"
-        >
-          {quoting === null ? "Check price" : "Cancel"}
-        </button>
-
-        {alternatives > 0 && (
+        <div className="col-span-2 flex items-end justify-between gap-3 sm:col-span-1 sm:flex-col sm:items-end sm:gap-1.5">
+          <div className="text-right">
+            <div className="font-mono text-[17px] font-medium tabular-nums">
+              {formatMoney(best.totalPrice)}
+            </div>
+            <div className="font-mono text-[10px] text-muted tabular-nums">
+              {formatMoney(best.nightlyRate)} × {best.nights}
+            </div>
+          </div>
           <button
             type="button"
-            onClick={() => setExpanded((open) => !open)}
-            className="text-accent underline underline-offset-2"
+            onClick={() => setQuoting(quoting === null ? best : null)}
+            className="rounded-[3px] bg-accent px-3 py-1.5 text-[12.5px] font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent sm:w-full"
           >
-            {expanded
-              ? "Hide"
-              : `Also from ${alternatives} other supplier${alternatives === 1 ? "" : "s"}`}
+            {quoting === null ? "Check live price" : "Close"}
           </button>
-        )}
+        </div>
       </div>
 
-      {expanded && alternatives > 0 && (
-        <ul className="mt-3 space-y-1.5 border-l border-line pl-3">
-          {offers.slice(1).map((offer) => (
-            <li key={offer.id} className="flex items-center gap-3 text-xs text-muted">
-              <span className="w-16 capitalize">{offer.supplier}</span>
-              <span className="tabular-nums">{formatMoney(offer.totalPrice)}</span>
-              <span>{offer.refundable ? "refundable" : "non-refundable"}</span>
-              <span className="truncate italic opacity-70">“{offer.name}”</span>
-            </li>
-          ))}
-        </ul>
-      )}
-
       {quoting !== null && (
-        <QuotePanel
-          option={quoting}
-          apiUrl={apiUrl}
-          chaos={chaos}
-          onClose={() => setQuoting(null)}
-        />
+        <div className="px-4 pb-4">
+          <QuotePanel
+            option={quoting}
+            apiUrl={apiUrl}
+            chaos={chaos}
+            onClose={() => setQuoting(null)}
+          />
+        </div>
       )}
     </article>
   );

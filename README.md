@@ -15,7 +15,7 @@ backed by an append-only ledger.
 Everything runs locally against seeded data. There is nothing to sign up for.
 
 ```bash
-git clone <repo-url> stayfinder && cd stayfinder
+git clone https://github.com/shahidmonowarr/StayFinder.git stayfinder && cd stayfinder
 cp .env.example .env
 docker compose up -d
 npm install && npm run db:deploy

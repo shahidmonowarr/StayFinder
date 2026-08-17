@@ -40,7 +40,7 @@ function PriceChangeNotice({ result }: { result: QuoteResult }) {
   const rose = difference.amountMinor > 0;
 
   return (
-    <div className="rounded border border-warn/40 bg-warn/5 p-3 text-sm" role="alert">
+    <div className="rounded-[3px] border border-warn/50 bg-warn/8 p-3 text-[13px]" role="alert">
       <p className="font-medium">The supplier changed this price.</p>
       <p className="mt-1 text-muted">
         You were shown <span className="line-through">{formatMoney(result.previousTotal)}</span>.
@@ -107,7 +107,7 @@ export function QuotePanel({
   }
 
   return (
-    <div className="mt-3 rounded border border-line bg-white p-4">
+    <div className="rounded border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium">{option.name}</p>
@@ -129,7 +129,7 @@ export function QuotePanel({
           <button
             type="button"
             onClick={getQuote}
-            className="ml-auto rounded bg-ink px-3 py-1.5 text-sm text-white"
+            className="ml-auto rounded-[3px] bg-accent px-3 py-1.5 text-[13px] font-medium text-white"
           >
             Get live price
           </button>
@@ -144,24 +144,28 @@ export function QuotePanel({
 
           <div className="flex items-baseline justify-between text-sm">
             <span className="text-muted">Total for the stay</span>
-            <span className="font-medium tabular-nums">
+            <span className="font-mono font-medium tabular-nums">
               {formatMoney(phase.result.quote.totalPrice)}
             </span>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
             <label>
-              <span className="mb-1 block text-xs text-muted">Guest name</span>
+              <span className="mb-1 block font-mono text-[10px] tracking-[0.09em] text-muted uppercase">
+                Guest name
+              </span>
               <input
-                className="w-full rounded border border-line px-2 py-1.5 text-sm"
+                className="w-full rounded-[3px] border border-line bg-card px-2 py-1.5 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 value={guestName}
                 onChange={(event) => setGuestName(event.target.value)}
               />
             </label>
             <label>
-              <span className="mb-1 block text-xs text-muted">Email</span>
+              <span className="mb-1 block font-mono text-[10px] tracking-[0.09em] text-muted uppercase">
+                Email
+              </span>
               <input
-                className="w-full rounded border border-line px-2 py-1.5 text-sm"
+                className="w-full rounded-[3px] border border-line bg-card px-2 py-1.5 text-[13px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
                 value={guestEmail}
                 onChange={(event) => setGuestEmail(event.target.value)}
               />
@@ -172,7 +176,7 @@ export function QuotePanel({
             type="button"
             disabled={phase.step === "booking"}
             onClick={() => void book(phase.result)}
-            className="w-full rounded bg-ink px-3 py-2 text-sm text-white disabled:opacity-50"
+            className="w-full rounded-[3px] bg-accent px-3 py-2 text-[13px] font-medium text-white disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {phase.step === "booking"
               ? "Creating booking…"

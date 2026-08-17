@@ -43,16 +43,16 @@ export default async function HomePage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight text-balance">
+      <h1 className="max-w-3xl text-[26px] leading-[1.15] font-semibold tracking-tight text-balance">
         Three suppliers, one search, none of them in agreement.
       </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
-        Every search fans out to three hotel suppliers in parallel with a 1500ms deadline each.
-        Results stream in as they answer — watch the list re-sort when the slowest supplier turns
-        out to have the cheapest room, and watch the page carry on when one of them fails.
+      <p className="mt-3 max-w-2xl text-[13.5px] leading-relaxed text-muted">
+        Every search asks three hotel suppliers at once and gives each 1.5 seconds. The spans below
+        are drawn to scale against that deadline — watch a supplier miss it, and watch the results
+        carry on without it.
       </p>
 
-      <div className="mt-8">
+      <div className="mt-7">
         <SearchExperience initialQuery={initialQuery} streamOptions={{ baseUrl: API_URL }} />
       </div>
 

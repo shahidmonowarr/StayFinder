@@ -31,7 +31,7 @@ function meta(supplier: SupplierId, status: "ok" | "timeout" | "error", resultCo
 }
 
 function started(): SearchStreamState {
-  const state = searchStreamReducer(initialSearchStreamState, { type: "start" });
+  const state = searchStreamReducer(initialSearchStreamState, { type: "start", at: 1000 });
   return searchStreamReducer(state, {
     type: "meta",
     event: {
@@ -198,11 +198,13 @@ describe("start", () => {
       type: "leg",
       event: { meta: meta("alpha", "ok", 1), options: [option("alpha", "A", 30000)] },
     });
-    state = searchStreamReducer(state, { type: "start" });
+    state = searchStreamReducer(state, { type: "start", at: 2000 });
 
     expect(state.options).toEqual([]);
     expect(state.suppliers).toEqual([]);
     expect(state.phase).toBe("streaming");
+    // The clock the trace draws its growing bars against.
+    expect(state.startedAt).toBe(2000);
   });
 });
 

@@ -89,15 +89,17 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
     });
 
   return (
-    <div className="rounded border border-line bg-white p-4">
+    <div className="rounded border border-line bg-card p-4">
       <div className="flex items-baseline justify-between">
-        <p className="text-sm font-medium">Payment</p>
-        <p className="text-xs text-muted">
+        <h2 className="font-mono text-[10px] font-semibold tracking-[0.11em] text-muted uppercase">
+          Payment
+        </h2>
+        <p className="font-mono text-[10.5px] text-muted">
           provider: {simulated ? "fake (no Stripe account needed)" : "stripe test mode"}
         </p>
       </div>
 
-      <p className="mt-1 text-sm text-muted">
+      <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
         Confirmation is webhook-driven, never redirect-driven. A browser can be closed, blocked, or
         lose the tab; the webhook is the only delivery the provider retries.
       </p>
@@ -107,7 +109,7 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
           type="button"
           disabled={!canPay || busy !== null}
           onClick={startCheckout}
-          className="rounded bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-40"
+          className="rounded-[3px] bg-accent px-3 py-1.5 text-[12.5px] font-medium text-white disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {busy === "checkout" ? "Starting…" : "Start checkout"}
         </button>
@@ -118,7 +120,7 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
               type="button"
               disabled={intentId === null || busy !== null}
               onClick={() => deliver("payment_intent.succeeded")}
-              className="rounded border border-line px-3 py-1.5 text-sm disabled:opacity-40"
+              className="rounded-[3px] border border-line bg-card px-3 py-1.5 text-[12.5px] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Deliver payment succeeded
             </button>
@@ -126,7 +128,7 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
               type="button"
               disabled={intentId === null || busy !== null}
               onClick={() => deliver("payment_intent.payment_failed")}
-              className="rounded border border-line px-3 py-1.5 text-sm disabled:opacity-40"
+              className="rounded-[3px] border border-line bg-card px-3 py-1.5 text-[12.5px] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               Deliver payment failed
             </button>
@@ -134,7 +136,7 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
               type="button"
               disabled={lastEventId === null || busy !== null}
               onClick={() => deliver("payment_intent.succeeded", lastEventId ?? undefined)}
-              className="rounded border border-warn/50 px-3 py-1.5 text-sm disabled:opacity-40"
+              className="rounded-[3px] border border-warn/60 bg-warn/5 px-3 py-1.5 text-[12.5px] text-warn disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               title="Sends the exact same event id again"
             >
               Redeliver the last event
@@ -146,7 +148,7 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
           type="button"
           disabled={!canCancel || busy !== null}
           onClick={cancel}
-          className="ml-auto rounded border border-line px-3 py-1.5 text-sm disabled:opacity-40"
+          className="ml-auto rounded-[3px] border border-line bg-card px-3 py-1.5 text-[12.5px] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           {busy === "cancel" ? "Cancelling…" : "Cancel booking"}
         </button>
@@ -157,16 +159,16 @@ export function PaymentPanel({ bookingId, status, apiUrl, simulated }: Props) {
           type="button"
           disabled={busy !== null}
           onClick={() => deliver("charge.refunded")}
-          className="mt-2 rounded border border-line px-3 py-1.5 text-sm disabled:opacity-40"
+          className="mt-2 rounded-[3px] border border-line bg-card px-3 py-1.5 text-[12.5px] disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           Deliver refund succeeded
         </button>
       )}
 
-      {note !== null && <p className="mt-3 text-sm text-muted">{note}</p>}
+      {note !== null && <p className="mt-3 text-[12.5px] text-muted">{note}</p>}
 
       {simulated && (
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-[11.5px] leading-relaxed text-muted">
           The simulated deliveries are signed and go through the real webhook endpoint — signature
           check and all. <strong>Redeliver the last event</strong> sends the identical event id: the
           booking does not change, and no second charge appears in the ledger.

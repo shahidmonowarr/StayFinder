@@ -7,7 +7,9 @@ import { useState, type FormEvent } from "react";
 export const DESTINATIONS = ["Lisbon", "Porto", "Barcelona", "Madrid"] as const;
 
 const field =
-  "w-full rounded border border-line bg-white px-2.5 py-1.5 text-sm outline-none focus:border-accent";
+  "w-full rounded-[3px] border border-line bg-card px-2.5 py-1.5 text-[13px] outline-none focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent";
+
+const label = "mb-1 block font-mono text-[10px] tracking-[0.09em] text-muted uppercase";
 
 export function SearchForm({
   initial,
@@ -28,7 +30,7 @@ export function SearchForm({
   return (
     <form onSubmit={submit} className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       <label className="col-span-2 sm:col-span-1">
-        <span className="mb-1 block text-xs text-muted">Destination</span>
+        <span className={label}>Destination</span>
         <select
           className={field}
           value={draft.destination}
@@ -43,7 +45,7 @@ export function SearchForm({
       </label>
 
       <label>
-        <span className="mb-1 block text-xs text-muted">Check in</span>
+        <span className={label}>Check in</span>
         <input
           type="date"
           className={field}
@@ -53,7 +55,7 @@ export function SearchForm({
       </label>
 
       <label>
-        <span className="mb-1 block text-xs text-muted">Check out</span>
+        <span className={label}>Check out</span>
         <input
           type="date"
           className={field}
@@ -63,7 +65,7 @@ export function SearchForm({
       </label>
 
       <label>
-        <span className="mb-1 block text-xs text-muted">Guests</span>
+        <span className={label}>Guests</span>
         <select
           className={field}
           value={draft.guests}
@@ -80,7 +82,7 @@ export function SearchForm({
       <button
         type="submit"
         disabled={busy}
-        className="self-end rounded bg-ink px-3 py-1.5 text-sm text-white disabled:opacity-50"
+        className="self-end rounded-[3px] bg-ink px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         {busy ? "Searching…" : "Search"}
       </button>

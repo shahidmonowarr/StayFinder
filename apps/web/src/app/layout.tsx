@@ -1,6 +1,29 @@
 import type { Metadata } from "next";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 import "./globals.css";
+
+/**
+ * Plex rather than a neutral UI grotesque. This interface is an instrument —
+ * every latency, price, and event id is a figure you compare against another —
+ * so the mono is load-bearing rather than decorative, and the two faces are
+ * designed as one family so mixing them mid-sentence does not jar.
+ *
+ * Self-hosted at build time by `next/font`, so there is no runtime CDN request.
+ */
+const plexSans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-plex-sans",
+  display: "swap",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500"],
+  variable: "--font-plex-mono",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -26,18 +49,23 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="font-sans">
-        <div className="mx-auto flex min-h-screen max-w-4xl flex-col px-6">
-          <header className="flex items-center justify-between border-b border-line py-5">
-            <a href="/" className="text-sm font-semibold tracking-tight hover:text-accent">
+        <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-5 sm:px-8">
+          <header className="flex items-center justify-between border-b border-line py-4">
+            <a
+              href="/"
+              className="text-sm font-semibold tracking-tight hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
               StayFinder
             </a>
-            <span className="text-xs text-muted">Supplier aggregation demo</span>
+            <span className="font-mono text-[11px] tracking-wide text-muted">
+              supplier aggregation demo
+            </span>
           </header>
-          <main className="flex-1 py-16">{children}</main>
-          <footer className="border-t border-line py-5 text-xs text-muted">
-            Seeded demo data. No real hotels, no real money.
+          <main className="flex-1 py-10">{children}</main>
+          <footer className="border-t border-line py-4 font-mono text-[11px] text-muted">
+            seeded data · no real hotels · no real money
           </footer>
         </div>
       </body>

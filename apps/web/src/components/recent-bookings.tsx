@@ -33,21 +33,27 @@ export function RecentBookings({ bookings }: { bookings: RecentBooking[] }) {
 
   return (
     <section className="mt-14">
-      <h2 className="text-xs font-semibold tracking-wide text-muted uppercase">Recent bookings</h2>
+      <h2 className="font-mono text-[10px] font-semibold tracking-[0.11em] text-muted uppercase">
+        Recent bookings
+      </h2>
 
-      <ul className="mt-3 divide-y divide-line border-y border-line">
+      <ul className="mt-3 overflow-hidden rounded border border-line bg-card">
         {bookings.map((booking) => (
           <li key={booking.id}>
             <a
               href={`/bookings/${booking.id}`}
-              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2.5 text-sm hover:bg-line/20"
+              className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-hair px-4 py-2.5 text-[13px] last:border-b-0 hover:bg-surface focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
             >
               <span className="font-medium">{booking.hotelName}</span>
-              <span className="text-xs text-muted">
+              <span className="font-mono text-[10.5px] text-muted">
                 {booking.city} · {booking.checkIn} · {booking.nights} nights
               </span>
-              <span className={`ml-auto text-xs ${TONE[booking.status]}`}>{booking.status}</span>
-              <span className="w-20 text-right tabular-nums">{formatMoney(booking.total)}</span>
+              <span className={`ml-auto font-mono text-[10.5px] ${TONE[booking.status]}`}>
+                {booking.status}
+              </span>
+              <span className="w-20 text-right font-mono tabular-nums">
+                {formatMoney(booking.total)}
+              </span>
             </a>
           </li>
         ))}

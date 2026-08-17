@@ -91,7 +91,7 @@ export function useSearchStream(
       return;
     }
 
-    dispatch({ type: "start" });
+    dispatch({ type: "start", at: performance.now() });
 
     const source = factoryRef.current(
       searchStreamUrl(baseUrl, { destination, checkIn, checkOut, guests }, chaos),
