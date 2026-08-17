@@ -122,6 +122,95 @@ Beta's latency ceiling sits **above** the aggregator's 1500ms deadline on
 purpose, so timeouts occur naturally during a demo rather than needing to be
 staged. Gamma's price drift is what forces quote revalidation to exist.
 
+### Endpoints
+
+|                | Alpha                            | Beta                                   | Gamma                          |
+| -------------- | -------------------------------- | -------------------------------------- | ------------------------------ |
+| Search         | `GET /hotels`                    | `GET /v1/availability`                 | `POST /graphql` `searchHotels` |
+| Quote          | `GET /hotels/:id/quote`          | `GET /v1/availability/:id/price`       | `POST /graphql` `hotelQuote`   |
+| Destination by | city name (`destination=Lisbon`) | **city code** (`destination_code=LIS`) | city name                      |
+| Guests param   | `guests`                         | `occupancy`                            | `guests`                       |
+| Error shape    | `{ error, message }`             | `{ error_code, error_message }`        | GraphQL `errors[]`             |
+
+Beta indexing on city code rather than name is not decoration: the M3 adapter
+has to hold a destination→code mapping that the other two adapters do not need,
+which is the ordinary shape of supplier onboarding work.
+
+### The same hotel, three ways
+
+All three sell the property below for the same three-night stay. This is the
+entire normalization problem in one screen.
+
+```jsonc
+// Alpha — GET /hotels?destination=Lisbon&checkIn=2026-09-01&checkOut=2026-09-04&guests=2
+{
+  "hotelId": "ALPHA-1042",
+  "name": "Grand Meridian Lisbon",
+  "starRating": 5,
+  "nightlyRateCents": 12990, // integer minor units, per night
+  "currency": "EUR",
+  "refundable": true,
+}
+```
+
+```jsonc
+// Beta — GET /v1/availability?destination_code=LIS&check_in_date=2026-09-01&…
+{
+  "hotel_id": "bt_88",
+  "hotel_name": "Grand Meridian, Lisbon", // note the comma
+  "category": "4_STAR", // and a different star rating
+  "total_price": "375.00", // decimal STRING, whole stay
+  "currency": "EUR",
+  "cancellation_policy": "FREE_CANCELLATION",
+  "nights": 3,
+}
+```
+
+```jsonc
+// Gamma — POST /graphql { searchHotels(input: …) }
+{
+  "node": {
+    "id": "gamma:hotel:7",
+    "property": {
+      "name": "GRAND MERIDIAN LISBON",
+      "rating": { "stars": 5 },
+    },
+    "pricing": {
+      "perNight": { "amount": 13500, "currency": { "code": "EUR" } },
+      "refundable": false, // and it disagrees with Alpha about cancellation
+    },
+  },
+}
+```
+
+Three names, three ID schemes, three price encodings, two price bases, and a
+disagreement about whether the booking is refundable — for one building. The
+aggregator has no shared key to join on, so identity is inferred by normalizing
+the name (case, punctuation, diacritics, whitespace) together with the city.
+
+### Chaos, made reproducible
+
+Gamma's misbehaviour is driven by a seeded PRNG rather than `Math.random()`, and
+can be overridden per request with an `x-chaos` header:
+
+| Header           | Effect                                         |
+| ---------------- | ---------------------------------------------- |
+| `x-chaos: fail`  | this request returns HTTP 500                  |
+| `x-chaos: drift` | this quote returns a price search never showed |
+| `x-chaos: none`  | behave, whatever the roll says                 |
+| _(absent)_       | seeded roll: 20% fail, 10% drift               |
+
+Two requirements pull against each other here. A demo wants genuine surprise;
+a test suite and the M7 chaos button need failure on command. A seeded
+generator plus an explicit override satisfies both without a branch on
+`NODE_ENV`.
+
+The failure is injected at the transport layer, ahead of GraphQL, so it arrives
+as an opaque `500` with a plain-text body rather than a well-formed `errors`
+array. That is what a failing gateway in front of a supplier actually looks
+like, and it is harsher on the consumer — the aggregator has to survive a
+response it cannot parse at all.
+
 ---
 
 ## Fan-out and isolation _(planned — M3)_

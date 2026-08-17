@@ -63,6 +63,43 @@ cache so the demo runs on a laptop with nothing installed.
 
 ---
 
+## See the problem for yourself
+
+With `npm run dev` running, ask all three suppliers about the same hotel for the
+same three nights. Every one of them describes it differently.
+
+```bash
+curl -s "localhost:4001/hotels?destination=Lisbon&checkIn=2026-09-01&checkOut=2026-09-04&guests=2" | jq '.hotels[0]'
+```
+
+```bash
+curl -s "localhost:4002/v1/availability?destination_code=LIS&check_in_date=2026-09-01&check_out_date=2026-09-04&occupancy=2" | jq '.results[0]'
+```
+
+```bash
+curl -s localhost:4003/graphql -H 'content-type: application/json' -d '{"query":"{searchHotels(input:{destination:\"Lisbon\",checkIn:\"2026-09-01\",checkOut:\"2026-09-04\",guests:2}){edges{node{id property{name rating{stars}} pricing{perNight{amount currency{code}} refundable}}}}}"}' | jq '.data.searchHotels.edges[0].node'
+```
+
+If that third one returns a `500`, run it again — you have just met Gamma, and
+absorbing that is the aggregator's job.
+
+`ALPHA-1042` / `bt_88` / `gamma:hotel:7` are the same building. Alpha calls it
+"Grand Meridian Lisbon" at `12990` cents a night, Beta calls it "Grand Meridian,
+Lisbon" at `"375.00"` for the stay, Gamma shouts "GRAND MERIDIAN LISBON" at
+`13500` a night buried under `pricing.perNight.amount` — and Alpha and Gamma
+disagree about whether it is refundable. There is no shared key to join on.
+
+Gamma also fails one request in five. Force its behaviour with a header:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' localhost:4003/graphql -H 'content-type: application/json' -H 'x-chaos: fail' -d '{"query":"{searchHotels(input:{destination:\"Lisbon\",checkIn:\"2026-09-01\",checkOut:\"2026-09-04\"}){totalCount}}"}'
+```
+
+`x-chaos: drift` makes a quote come back at a price search never advertised,
+`x-chaos: none` makes Gamma behave. This is what the M7 chaos-mode toggle drives.
+
+---
+
 ## Design decisions
 
 **Why a 1500ms per-supplier timeout.** Beta's latency ranges to 2000ms, so the
@@ -107,7 +144,7 @@ does the right thing under duplicate webhooks and races.
 ## Milestones
 
 - [x] **M1** — monorepo scaffold, shared model, CI
-- [ ] **M2** — three mock suppliers + seeded inventory
+- [x] **M2** — three mock suppliers + seeded inventory
 - [ ] **M3** — `/api/search` fan-out, timeouts, normalization
 - [ ] **M4** — SSE streaming, Redis cache, supplier-status UI
 - [ ] **M5** — quote revalidation, booking state machine, tests
